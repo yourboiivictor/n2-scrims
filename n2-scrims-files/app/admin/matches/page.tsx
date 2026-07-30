@@ -1,0 +1,1434 @@
+"use client";
+
+import {
+  collection,
+  collectionGroup,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+  writeBatch,
+} from "firebase/firestore";
+import {
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  User,
+} from "firebase/auth";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { auth, db, googleProvider } from "@/firebase";
+
+const ADMIN_EMAIL = "victornicetry2@gmail.com";
+const KILL_POINT_VALUE = 2;
+
+type SquadPlayer = {
+  name?: string;
+  playerName?: string;
+  ign?: string;
+};
+
+type Squad = {
+  id: string;
+  squadName: string;
+  logoUrl?: string;
+  players?: Array<string | SquadPlayer>;
+  status?: string;
+  slot?: number;
+};
+
+type PlayerControl = {
+  name: string;
+  kills: number;
+  isAlive: boolean;
+};
+
+type LiveSquad = {
+  squadId: string;
+  squadName: string;
+  logoUrl: string;
+  slot: number;
+  placement: number | null;
+  players: PlayerControl[];
+  totalKills: number;
+  killPoints: number;
+  placementPoints: number;
+  matchPoints: number;
+  alivePlayers: number;
+  isEliminated: boolean;
+};
+
+type FinalizedTotals = {
+  totalKills: number;
+  placementPoints: number;
+  totalPoints: number;
+};
+
+type LiveMatchSettings = {
+  matchNumber: number;
+  status: "not-started" | "live" | "finalized";
+};
+
+function getPlayerName(
+  player: string | SquadPlayer | undefined,
+  index: number,
+) {
+  if (typeof player === "string") {
+    return player.trim() || `Player ${index + 1}`;
+  }
+
+  if (player && typeof player === "object") {
+    return (
+      player.name?.trim() ||
+      player.playerName?.trim() ||
+      player.ign?.trim() ||
+      `Player ${index + 1}`
+    );
+  }
+
+  return `Player ${index + 1}`;
+}
+
+function getPlacementPoints(placement: number | null) {
+  if (!placement || placement <= 0) return 0;
+  if (placement === 1) return 10;
+  if (placement === 2) return 8;
+  if (placement === 3) return 6;
+  if (placement >= 4 && placement <= 15) return 5;
+  return 2;
+}
+
+function calculateLiveSquad(squad: LiveSquad): LiveSquad {
+  const totalKills = squad.players.reduce(
+    (total, player) => total + Math.max(0, Number(player.kills) || 0),
+    0,
+  );
+
+  const alivePlayers = squad.players.filter(
+    (player) => player.isAlive,
+  ).length;
+
+  const killPoints = totalKills * KILL_POINT_VALUE;
+  const placementPoints = getPlacementPoints(squad.placement);
+
+  return {
+    ...squad,
+    totalKills,
+    killPoints,
+    placementPoints,
+    matchPoints: killPoints + placementPoints,
+    alivePlayers,
+    isEliminated: alivePlayers === 0,
+  };
+}
+
+function createLiveSquad(squad: Squad, slot: number): LiveSquad {
+  const sourcePlayers = Array.isArray(squad.players)
+    ? squad.players
+    : [];
+
+  const players: PlayerControl[] = Array.from(
+    { length: 4 },
+    (_, index) => ({
+      name: getPlayerName(sourcePlayers[index], index),
+      kills: 0,
+      isAlive: true,
+    }),
+  );
+
+  return calculateLiveSquad({
+    squadId: squad.id,
+    squadName: squad.squadName || "Unnamed Squad",
+    logoUrl: squad.logoUrl || "",
+    slot,
+    placement: null,
+    players,
+    totalKills: 0,
+    killPoints: 0,
+    placementPoints: 0,
+    matchPoints: 0,
+    alivePlayers: 4,
+    isEliminated: false,
+  });
+}
+
+function sortSquadsBySlot(squads: Squad[]) {
+  return [...squads].sort((a, b) => {
+    const aSlot =
+      typeof a.slot === "number"
+        ? a.slot
+        : Number.MAX_SAFE_INTEGER;
+
+    const bSlot =
+      typeof b.slot === "number"
+        ? b.slot
+        : Number.MAX_SAFE_INTEGER;
+
+    if (aSlot !== bSlot) return aSlot - bSlot;
+
+    return (a.squadName || "").localeCompare(b.squadName || "");
+  });
+}
+
+export default function AdminMatchesPage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [squadsLoading, setSquadsLoading] = useState(true);
+  const [approvedSquads, setApprovedSquads] = useState<Squad[]>([]);
+  const [liveSquads, setLiveSquads] = useState<
+    Record<string, LiveSquad>
+  >({});
+  const [finalizedTotals, setFinalizedTotals] = useState<
+    Record<string, FinalizedTotals>
+  >({});
+  const [liveSettings, setLiveSettings] =
+    useState<LiveMatchSettings>({
+      matchNumber: 1,
+      status: "not-started",
+    });
+
+  const [message, setMessage] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [isPreparingNext, setIsPreparingNext] = useState(false);
+  const [savingSquadId, setSavingSquadId] = useState<
+    string | null
+  >(null);
+
+  const saveTimers = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
+
+  const isAdmin =
+    user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  const matchId = useMemo(
+    () => `match-${liveSettings.matchNumber}`,
+    [liveSettings.matchNumber],
+  );
+
+  const liveSquadList = useMemo(
+    () =>
+      Object.values(liveSquads).sort(
+        (a, b) => a.slot - b.slot,
+      ),
+    [liveSquads],
+  );
+
+  const aliveSquads = useMemo(
+    () =>
+      liveSquadList.filter((squad) => !squad.isEliminated)
+        .length,
+    [liveSquadList],
+  );
+
+  const alivePlayers = useMemo(
+    () =>
+      liveSquadList.reduce(
+        (total, squad) => total + squad.alivePlayers,
+        0,
+      ),
+    [liveSquadList],
+  );
+
+  const totalLiveKills = useMemo(
+    () =>
+      liveSquadList.reduce(
+        (total, squad) => total + squad.totalKills,
+        0,
+      ),
+    [liveSquadList],
+  );
+
+  const placementsSet = useMemo(
+    () =>
+      liveSquadList.filter((squad) => squad.placement).length,
+    [liveSquadList],
+  );
+
+  const signIn = async () => {
+    try {
+      setMessage("");
+
+      const provider =
+        googleProvider instanceof GoogleAuthProvider
+          ? googleProvider
+          : new GoogleAuthProvider();
+
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error(error);
+      setMessage("Unable to sign in with Google.");
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error(error);
+      setMessage("Unable to sign out.");
+    }
+  };
+
+  const loadFinalizedTotals = useCallback(async () => {
+    try {
+      const snapshot = await getDocs(
+        collectionGroup(db, "results"),
+      );
+
+      const totals: Record<string, FinalizedTotals> = {};
+
+      snapshot.forEach((resultDocument) => {
+        const data = resultDocument.data();
+
+        const squadId =
+          typeof data.squadId === "string"
+            ? data.squadId
+            : resultDocument.id;
+
+        if (!totals[squadId]) {
+          totals[squadId] = {
+            totalKills: 0,
+            placementPoints: 0,
+            totalPoints: 0,
+          };
+        }
+
+        totals[squadId].totalKills +=
+          Number(data.totalKills) || 0;
+
+        totals[squadId].placementPoints +=
+          Number(data.placementPoints) || 0;
+
+        totals[squadId].totalPoints +=
+          Number(data.totalPoints) || 0;
+      });
+
+      setFinalizedTotals(totals);
+      return totals;
+    } catch (error) {
+      console.error("Unable to load finalized totals:", error);
+      setFinalizedTotals({});
+return {};
+    }
+  }, []);
+
+  const updatePublicStanding = useCallback(
+    async (
+      squad: LiveSquad,
+      suppliedTotals?: Record<string, FinalizedTotals>,
+    ) => {
+      const base =
+        (suppliedTotals || finalizedTotals)[squad.squadId] || {
+          totalKills: 0,
+          placementPoints: 0,
+          totalPoints: 0,
+        };
+
+      await setDoc(
+        doc(db, "standings", squad.squadId),
+        {
+          squadId: squad.squadId,
+          squadName: squad.squadName,
+          logoUrl: squad.logoUrl,
+          slot: squad.slot,
+          playerNames: squad.players.map(
+            (player) => player.name,
+          ),
+
+          currentMatchNumber: liveSettings.matchNumber,
+          currentMatchKills: squad.totalKills,
+          currentMatchPlacementPoints:
+            squad.placementPoints,
+          currentMatchPoints: squad.matchPoints,
+
+          totalKills: base.totalKills + squad.totalKills,
+          placementPoints:
+            base.placementPoints + squad.placementPoints,
+          totalPoints: base.totalPoints + squad.matchPoints,
+
+          alivePlayers: squad.alivePlayers,
+          isEliminated: squad.isEliminated,
+          isLive: liveSettings.status === "live",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    },
+    [
+      finalizedTotals,
+      liveSettings.matchNumber,
+      liveSettings.status,
+    ],
+  );
+
+  const saveLiveSquad = useCallback(
+    async (squad: LiveSquad) => {
+      if (!isAdmin || liveSettings.status !== "live") return;
+
+      try {
+        setSavingSquadId(squad.squadId);
+
+        await setDoc(
+          doc(
+            db,
+            "liveMatches",
+            matchId,
+            "squads",
+            squad.squadId,
+          ),
+          {
+            ...squad,
+            matchNumber: liveSettings.matchNumber,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        await updatePublicStanding(squad);
+      } catch (error) {
+        console.error("Unable to save squad:", error);
+        setMessage(`Unable to save ${squad.squadName}.`);
+      } finally {
+        setSavingSquadId((current) =>
+          current === squad.squadId ? null : current,
+        );
+      }
+    },
+    [
+      isAdmin,
+      liveSettings.status,
+      liveSettings.matchNumber,
+      matchId,
+      updatePublicStanding,
+    ],
+  );
+
+  const scheduleSquadSave = useCallback(
+    (squad: LiveSquad, immediate = false) => {
+      const previousTimer =
+        saveTimers.current[squad.squadId];
+
+      if (previousTimer) {
+        clearTimeout(previousTimer);
+      }
+
+      if (immediate) {
+        void saveLiveSquad(squad);
+        return;
+      }
+
+      saveTimers.current[squad.squadId] = setTimeout(() => {
+        void saveLiveSquad(squad);
+      }, 400);
+    },
+    [saveLiveSquad],
+  );
+
+  const updateSquad = useCallback(
+    (
+      squadId: string,
+      updater: (current: LiveSquad) => LiveSquad,
+      immediate = false,
+    ) => {
+      setLiveSquads((currentSquads) => {
+        const current = currentSquads[squadId];
+
+        if (!current) return currentSquads;
+
+        const updated = calculateLiveSquad(
+          updater(current),
+        );
+
+        scheduleSquadSave(updated, immediate);
+
+        return {
+          ...currentSquads,
+          [squadId]: updated,
+        };
+      });
+    },
+    [scheduleSquadSave],
+  );
+
+  const changePlayerKills = (
+    squadId: string,
+    playerIndex: number,
+    value: number,
+  ) => {
+    updateSquad(squadId, (current) => ({
+      ...current,
+      players: current.players.map((player, index) =>
+        index === playerIndex
+          ? {
+              ...player,
+              kills: Math.max(0, Number(value) || 0),
+            }
+          : player,
+      ),
+    }));
+  };
+
+  const togglePlayerAlive = (
+    squadId: string,
+    playerIndex: number,
+  ) => {
+    updateSquad(
+      squadId,
+      (current) => ({
+        ...current,
+        players: current.players.map((player, index) =>
+          index === playerIndex
+            ? {
+                ...player,
+                isAlive: !player.isAlive,
+              }
+            : player,
+        ),
+      }),
+      true,
+    );
+  };
+
+  const changePlacement = (
+    squadId: string,
+    value: string,
+  ) => {
+    updateSquad(squadId, (current) => {
+      const parsed = Number.parseInt(value, 10);
+
+      return {
+        ...current,
+        placement:
+          value === "" || Number.isNaN(parsed)
+            ? null
+            : Math.max(1, parsed),
+      };
+    });
+  };
+
+  const initializeMatch = useCallback(
+    async (matchNumber: number) => {
+      if (!isAdmin || approvedSquads.length === 0) return;
+
+      setIsStarting(true);
+      setMessage("");
+
+      try {
+        const newMatchId = `match-${matchNumber}`;
+        const sortedSquads = sortSquadsBySlot(
+          approvedSquads,
+        );
+
+        const preparedSquads: Record<
+          string,
+          LiveSquad
+        > = {};
+
+        const batch = writeBatch(db);
+
+        sortedSquads.forEach((squad, index) => {
+          const liveSquad = createLiveSquad(
+            squad,
+            typeof squad.slot === "number"
+              ? squad.slot
+              : index + 1,
+          );
+
+          preparedSquads[squad.id] = liveSquad;
+
+          batch.set(
+            doc(
+              db,
+              "liveMatches",
+              newMatchId,
+              "squads",
+              squad.id,
+            ),
+            {
+              ...liveSquad,
+              matchNumber,
+              updatedAt: serverTimestamp(),
+            },
+          );
+        });
+
+        batch.set(
+          doc(db, "liveMatches", newMatchId),
+          {
+            matchNumber,
+            status: "live",
+            startedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        batch.set(
+          doc(db, "settings", "liveMatch"),
+          {
+            matchNumber,
+            status: "live",
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        await batch.commit();
+
+        const baseTotals = await loadFinalizedTotals();
+
+        await Promise.all(
+          Object.values(preparedSquads).map((squad) =>
+            updatePublicStanding(squad, baseTotals),
+          ),
+        );
+
+        setLiveSquads(preparedSquads);
+        setMessage(`Match ${matchNumber} is now live.`);
+      } catch (error) {
+        console.error("Unable to start match:", error);
+        setMessage("Unable to start match.");
+      } finally {
+        setIsStarting(false);
+      }
+    },
+    [
+      approvedSquads,
+      isAdmin,
+      loadFinalizedTotals,
+      updatePublicStanding,
+    ],
+  );
+
+  const finalizeMatch = async () => {
+    if (!isAdmin || liveSettings.status !== "live") return;
+
+    const missingPlacements = liveSquadList.filter(
+      (squad) => !squad.placement,
+    );
+
+    if (missingPlacements.length > 0) {
+      setMessage(
+        `Add placement for every squad. Missing: ${missingPlacements
+          .map((squad) => squad.squadName)
+          .join(", ")}`,
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Finalize Match ${liveSettings.matchNumber}?`,
+    );
+
+    if (!confirmed) return;
+
+    setIsFinalizing(true);
+    setMessage("");
+
+    try {
+      Object.values(saveTimers.current).forEach((timer) =>
+        clearTimeout(timer),
+      );
+
+      const batch = writeBatch(db);
+
+      liveSquadList.forEach((squad) => {
+        batch.set(
+          doc(
+            db,
+            "matches",
+            matchId,
+            "results",
+            squad.squadId,
+          ),
+          {
+            matchNumber: liveSettings.matchNumber,
+            squadId: squad.squadId,
+            squadName: squad.squadName,
+            logoUrl: squad.logoUrl,
+            slot: squad.slot,
+            players: squad.players,
+            playerNames: squad.players.map(
+              (player) => player.name,
+            ),
+            placement: squad.placement,
+            totalKills: squad.totalKills,
+            killPoints: squad.killPoints,
+            placementPoints: squad.placementPoints,
+            totalPoints: squad.matchPoints,
+            finalizedAt: serverTimestamp(),
+          },
+        );
+      });
+
+      batch.set(
+        doc(db, "matches", matchId),
+        {
+          matchNumber: liveSettings.matchNumber,
+          status: "finalized",
+          squadCount: liveSquadList.length,
+          finalizedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      batch.set(
+        doc(db, "liveMatches", matchId),
+        {
+          matchNumber: liveSettings.matchNumber,
+          status: "finalized",
+          finalizedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      batch.set(
+        doc(db, "settings", "liveMatch"),
+        {
+          matchNumber: liveSettings.matchNumber,
+          status: "finalized",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      await batch.commit();
+
+      const standingsBatch = writeBatch(db);
+      const newTotals: Record<string, FinalizedTotals> = {};
+
+      liveSquadList.forEach((squad) => {
+        const previous =
+          finalizedTotals[squad.squadId] || {
+            totalKills: 0,
+            placementPoints: 0,
+            totalPoints: 0,
+          };
+
+        const totals = {
+          totalKills:
+            previous.totalKills + squad.totalKills,
+          placementPoints:
+            previous.placementPoints +
+            squad.placementPoints,
+          totalPoints:
+            previous.totalPoints + squad.matchPoints,
+        };
+
+        newTotals[squad.squadId] = totals;
+
+        standingsBatch.set(
+          doc(db, "standings", squad.squadId),
+          {
+            squadId: squad.squadId,
+            squadName: squad.squadName,
+            logoUrl: squad.logoUrl,
+            slot: squad.slot,
+            playerNames: squad.players.map(
+              (player) => player.name,
+            ),
+
+            currentMatchNumber:
+              liveSettings.matchNumber,
+            currentMatchKills: 0,
+            currentMatchPlacementPoints: 0,
+            currentMatchPoints: 0,
+
+            totalKills: totals.totalKills,
+            placementPoints: totals.placementPoints,
+            totalPoints: totals.totalPoints,
+
+            alivePlayers: 0,
+            isEliminated: false,
+            isLive: false,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+
+      await standingsBatch.commit();
+
+      setFinalizedTotals(newTotals);
+
+      setMessage(
+        `Match ${liveSettings.matchNumber} finalized successfully.`,
+      );
+    } catch (error) {
+      console.error("Unable to finalize match:", error);
+      setMessage("Unable to finalize match.");
+    } finally {
+      setIsFinalizing(false);
+    }
+  };
+
+  const prepareNextMatch = async () => {
+    if (!isAdmin || liveSettings.status !== "finalized") {
+      return;
+    }
+
+    setIsPreparingNext(true);
+    setMessage("");
+
+    try {
+      const nextMatchNumber =
+        liveSettings.matchNumber + 1;
+
+      await setDoc(
+        doc(db, "settings", "liveMatch"),
+        {
+          matchNumber: nextMatchNumber,
+          status: "not-started",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      setLiveSquads({});
+
+      setMessage(
+        `Match ${nextMatchNumber} is ready.`,
+      );
+    } catch (error) {
+      console.error(
+        "Unable to prepare next match:",
+        error,
+      );
+      setMessage("Unable to prepare next match.");
+    } finally {
+      setIsPreparingNext(false);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
+        setUser(currentUser);
+        setAuthLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setApprovedSquads([]);
+      setSquadsLoading(false);
+      return;
+    }
+
+    setSquadsLoading(true);
+
+    const squadsQuery = query(
+      collection(db, "squads"),
+      where("status", "==", "approved"),
+    );
+
+    const unsubscribe = onSnapshot(
+      squadsQuery,
+      (snapshot) => {
+        const squads = snapshot.docs.map(
+          (squadDocument) => ({
+            id: squadDocument.id,
+            ...(squadDocument.data() as Omit<
+              Squad,
+              "id"
+            >),
+          }),
+        );
+
+        setApprovedSquads(sortSquadsBySlot(squads));
+        setSquadsLoading(false);
+      },
+      (error) => {
+        console.error(
+          "Unable to load approved squads:",
+          error,
+        );
+        setMessage("Unable to load approved squads.");
+        setSquadsLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const unsubscribe = onSnapshot(
+      doc(db, "settings", "liveMatch"),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setLiveSettings({
+            matchNumber: 1,
+            status: "not-started",
+          });
+          return;
+        }
+
+        const data = snapshot.data();
+
+        setLiveSettings({
+          matchNumber: Number(data.matchNumber) || 1,
+          status:
+            data.status === "live" ||
+            data.status === "finalized"
+              ? data.status
+              : "not-started",
+        });
+      },
+      (error) => {
+        console.error(
+          "Unable to load live match settings:",
+          error,
+        );
+      },
+    );
+
+    return unsubscribe;
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void loadFinalizedTotals();
+  }, [isAdmin, loadFinalizedTotals]);
+
+  useEffect(() => {
+    if (
+      !isAdmin ||
+      liveSettings.status === "not-started"
+    ) {
+      setLiveSquads({});
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      collection(
+        db,
+        "liveMatches",
+        matchId,
+        "squads",
+      ),
+      (snapshot) => {
+        const loaded: Record<string, LiveSquad> = {};
+
+        snapshot.forEach((squadDocument) => {
+          const data =
+            squadDocument.data() as LiveSquad;
+
+          loaded[squadDocument.id] =
+            calculateLiveSquad({
+              ...data,
+              squadId: squadDocument.id,
+              players: Array.isArray(data.players)
+                ? data.players
+                : [],
+            });
+        });
+
+        setLiveSquads(loaded);
+      },
+      (error) => {
+        console.error(
+          "Unable to load live match squads:",
+          error,
+        );
+        setMessage(
+          "Unable to load live match squads.",
+        );
+      },
+    );
+
+    return unsubscribe;
+  }, [isAdmin, liveSettings.status, matchId]);
+
+  useEffect(() => {
+    const timers = saveTimers.current;
+
+    return () => {
+      Object.values(timers).forEach((timer) =>
+        clearTimeout(timer),
+      );
+    };
+  }, []);
+
+  if (authLoading) {
+    return (
+      <main className="min-h-screen bg-slate-950 p-6 text-white">
+        Checking admin account...
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 p-5 text-white">
+        <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 text-center">
+          <h1 className="text-2xl font-black">
+            N² Scrims Admin
+          </h1>
+
+          <p className="mt-2 text-sm text-slate-400">
+            Sign in with the administrator account.
+          </p>
+
+          <button
+            type="button"
+            onClick={signIn}
+            className="mt-6 w-full rounded-lg bg-white px-4 py-3 font-bold text-black"
+          >
+            Sign in with Google
+          </button>
+
+          {message && (
+            <p className="mt-3 text-sm text-red-400">
+              {message}
+            </p>
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 p-5 text-white">
+        <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-slate-900 p-6 text-center">
+          <h1 className="text-2xl font-black text-red-400">
+            Access denied
+          </h1>
+
+          <p className="mt-2 text-sm text-slate-300">
+            This Google account is not authorized.
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500">
+            {user.email}
+          </p>
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="mt-5 rounded-lg bg-white px-4 py-2 font-bold text-black"
+          >
+            Sign out
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-950 px-3 py-3 text-white">
+      <div className="mx-auto max-w-[1900px]">
+        <header className="rounded-2xl border border-white/10 bg-slate-900/90 p-4 shadow-xl">
+          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
+                N² Scrims Tournament Control
+              </p>
+
+              <h1 className="mt-1 text-3xl font-black">
+                Match {liveSettings.matchNumber}
+              </h1>
+
+              <p className="text-xs text-slate-400">
+                Friend&apos;s live scoring dashboard
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {liveSettings.status === "not-started" && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void initializeMatch(
+                      liveSettings.matchNumber,
+                    )
+                  }
+                  disabled={
+                    isStarting ||
+                    squadsLoading ||
+                    approvedSquads.length === 0
+                  }
+                  className="rounded-lg bg-green-500 px-5 py-2.5 text-sm font-black text-black disabled:opacity-50"
+                >
+                  {isStarting
+                    ? "Starting..."
+                    : "Start Match"}
+                </button>
+              )}
+
+              {liveSettings.status === "live" && (
+                <button
+                  type="button"
+                  onClick={() => void finalizeMatch()}
+                  disabled={isFinalizing}
+                  className="rounded-lg bg-red-500 px-5 py-2.5 text-sm font-black text-white disabled:opacity-50"
+                >
+                  {isFinalizing
+                    ? "Finalizing..."
+                    : "🏁 Finalize Match"}
+                </button>
+              )}
+
+              {liveSettings.status === "finalized" && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void prepareNextMatch()
+                  }
+                  disabled={isPreparingNext}
+                  className="rounded-lg bg-violet-500 px-5 py-2.5 text-sm font-black text-white disabled:opacity-50"
+                >
+                  {isPreparingNext
+                    ? "Preparing..."
+                    : "Prepare Next Match"}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <StatBox
+              label="Status"
+              value={liveSettings.status}
+            />
+
+            <StatBox
+              label="Squads"
+              value={String(
+                liveSquadList.length ||
+                  approvedSquads.length,
+              )}
+            />
+
+            <StatBox
+              label="Alive Squads"
+              value={`${aliveSquads}/${liveSquadList.length}`}
+            />
+
+            <StatBox
+              label="Alive Players"
+              value={`${alivePlayers}/${liveSquadList.length * 4}`}
+            />
+
+            <StatBox
+              label="Total Kills"
+              value={String(totalLiveKills)}
+            />
+
+            <StatBox
+              label="Placements"
+              value={`${placementsSet}/${liveSquadList.length}`}
+            />
+          </div>
+
+          {message && (
+            <div className="mt-3 rounded-lg border border-violet-400/20 bg-violet-400/10 px-3 py-2 text-xs text-violet-100">
+              {message}
+            </div>
+          )}
+        </header>
+
+        {squadsLoading ? (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-6 text-sm">
+            Loading approved squads...
+          </div>
+        ) : approvedSquads.length === 0 ? (
+          <div className="mt-4 rounded-2xl border border-yellow-400/20 bg-yellow-400/10 p-6 text-sm text-yellow-100">
+            There are no approved squads.
+          </div>
+        ) : liveSettings.status === "not-started" ? (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-8 text-center">
+            <h2 className="text-xl font-black">
+              Match {liveSettings.matchNumber} is ready
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-400">
+              {approvedSquads.length} approved squads
+              will be loaded.
+            </p>
+          </div>
+        ) : (
+          <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {liveSquadList.map((squad) => (
+              <SquadCard
+                key={squad.squadId}
+                squad={squad}
+                disabled={
+                  liveSettings.status !== "live"
+                }
+                isSaving={
+                  savingSquadId === squad.squadId
+                }
+                onPlacementChange={(value) =>
+                  changePlacement(
+                    squad.squadId,
+                    value,
+                  )
+                }
+                onKillsChange={(
+                  playerIndex,
+                  value,
+                ) =>
+                  changePlayerKills(
+                    squad.squadId,
+                    playerIndex,
+                    value,
+                  )
+                }
+                onToggleAlive={(playerIndex) =>
+                  togglePlayerAlive(
+                    squad.squadId,
+                    playerIndex,
+                  )
+                }
+              />
+            ))}
+          </section>
+        )}
+
+        <footer className="mt-4 flex flex-col gap-2 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-xs text-slate-400 lg:flex-row lg:items-center lg:justify-between">
+          <span>
+            🟢 All changes save automatically
+          </span>
+
+          <span>
+            Kill Value: 2 pts · 1st: 10 · 2nd: 8 ·
+            3rd: 6 · 4th–15th: 5 · 16th+: 2
+          </span>
+        </footer>
+      </div>
+    </main>
+  );
+}
+
+function StatBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-center">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-lg font-black capitalize text-white">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function SquadCard({
+  squad,
+  disabled,
+  isSaving,
+  onPlacementChange,
+  onKillsChange,
+  onToggleAlive,
+}: {
+  squad: LiveSquad;
+  disabled: boolean;
+  isSaving: boolean;
+  onPlacementChange: (value: string) => void;
+  onKillsChange: (
+    playerIndex: number,
+    value: number,
+  ) => void;
+  onToggleAlive: (playerIndex: number) => void;
+}) {
+  return (
+    <article
+      className={`overflow-hidden rounded-xl border bg-slate-900 shadow-lg ${
+        squad.isEliminated
+          ? "border-red-500/30 opacity-60"
+          : "border-white/10"
+      }`}
+    >
+      <div className="flex items-center gap-2 border-b border-white/10 bg-black/20 p-3">
+        <span className="shrink-0 rounded-md bg-violet-600 px-2 py-1 text-xs font-black">
+          #{squad.slot}
+        </span>
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
+          {squad.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={squad.logoUrl}
+              alt={`${squad.squadName} logo`}
+              className="h-full w-full object-contain p-1"
+            />
+          ) : (
+            <span className="text-[7px] font-bold text-slate-500">
+              LOGO
+            </span>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-black">
+            {squad.squadName}
+          </p>
+
+          <p
+            className={`text-[10px] font-bold ${
+              squad.isEliminated
+                ? "text-red-400"
+                : "text-green-400"
+            }`}
+          >
+            {squad.isEliminated
+              ? "Eliminated"
+              : `${squad.alivePlayers} Alive`}
+          </p>
+        </div>
+
+        <label className="w-16 shrink-0">
+          <span className="mb-1 block text-center text-[8px] font-bold uppercase text-slate-500">
+            Place
+          </span>
+
+          <input
+            type="number"
+            min={1}
+            value={squad.placement ?? ""}
+            disabled={disabled}
+            onChange={(event) =>
+              onPlacementChange(event.target.value)
+            }
+            className="h-8 w-full rounded-md border border-white/10 bg-slate-950 px-1 text-center text-sm font-black outline-none focus:border-violet-400 disabled:opacity-50"
+            placeholder="-"
+          />
+        </label>
+      </div>
+
+      <div className="space-y-1.5 p-3">
+        {squad.players.map(
+          (player, playerIndex) => (
+            <div
+              key={`${squad.squadId}-${playerIndex}`}
+              className="grid grid-cols-[minmax(0,1fr)_52px_64px] items-center gap-2"
+            >
+              <p className="truncate text-xs font-medium">
+                {player.name}
+              </p>
+
+              <input
+                type="number"
+                min={0}
+                value={player.kills}
+                disabled={disabled}
+                onChange={(event) =>
+                  onKillsChange(
+                    playerIndex,
+                    Number(event.target.value),
+                  )
+                }
+                className="h-7 w-full rounded-md border border-white/10 bg-slate-950 px-1 text-center text-xs font-black outline-none focus:border-violet-400 disabled:opacity-50"
+              />
+
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() =>
+                  onToggleAlive(playerIndex)
+                }
+                className={`h-7 rounded-md border px-1 text-[10px] font-black ${
+                  player.isAlive
+                    ? "border-green-500/40 bg-green-500/10 text-green-300"
+                    : "border-red-500/40 bg-red-500/10 text-red-300"
+                } disabled:opacity-50`}
+              >
+                {player.isAlive ? "Alive" : "Dead"}
+              </button>
+            </div>
+          ),
+        )}
+
+        {isSaving && (
+          <p className="pt-1 text-right text-[9px] font-bold text-yellow-300">
+            Saving...
+          </p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-4 gap-px border-t border-white/10 bg-white/10">
+        <CompactScore
+          label="Kills"
+          value={squad.totalKills}
+        />
+
+        <CompactScore
+          label="Kill Pts"
+          value={squad.killPoints}
+        />
+
+        <CompactScore
+          label="Place Pts"
+          value={squad.placementPoints}
+        />
+
+        <CompactScore
+          label="Total"
+          value={squad.matchPoints}
+          highlight
+        />
+      </div>
+    </article>
+  );
+}
+
+function CompactScore({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: number;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="bg-slate-900 px-1 py-2 text-center">
+      <p className="text-[7px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+
+      <p
+        className={`mt-0.5 text-base font-black ${
+          highlight ? "text-violet-400" : ""
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
