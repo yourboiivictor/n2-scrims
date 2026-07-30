@@ -27,6 +27,7 @@ export default function PublicTournamentPage() {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       setSettings({
+        ...defaultTournamentSettings,
         name: typeof data.name === "string" ? data.name : "N² Scrims",
         season: typeof data.season === "string" ? data.season : "",
         streamUrl: typeof data.streamUrl === "string" ? data.streamUrl : "",
