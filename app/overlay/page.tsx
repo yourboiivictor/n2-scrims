@@ -170,8 +170,18 @@ export default function LiveOverlayPage() {
   const visibleStandings = standings.slice(0, 10);
 
   return (
-    <main className="pointer-events-none min-h-screen bg-transparent text-white">
+    <main className="pointer-events-none min-h-screen bg-transparent text-white antialiased">
       <style jsx global>{`
+        html,
+        body {
+          background: transparent !important;
+        }
+
+        body {
+          margin: 0;
+          overflow: hidden;
+        }
+
         @keyframes overlay-enter {
           from {
             opacity: 0;
@@ -203,7 +213,7 @@ export default function LiveOverlayPage() {
       `}</style>
 
       <div className="flex min-h-screen items-center justify-end p-4">
-        <aside className="overlay-enter flex max-h-[96vh] w-[min(23vw,360px)] min-w-[315px] flex-col overflow-hidden border border-cyan-400/30 bg-[#030712]/95 shadow-[0_0_45px_rgba(0,174,255,0.22)] backdrop-blur-xl">
+        <aside className="overlay-enter flex max-h-[96vh] w-[min(23vw,360px)] min-w-[315px] flex-col overflow-hidden border border-cyan-400/40 bg-[#030712] shadow-[0_0_32px_rgba(0,174,255,0.22)]">
           <div className="h-1 bg-gradient-to-r from-yellow-400 via-cyan-400 to-blue-700" />
 
           <header className="relative overflow-hidden border-b border-white/10 px-5 py-4">
