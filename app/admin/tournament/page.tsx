@@ -27,13 +27,35 @@ export default function TournamentStandingsPage() {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       setSettings({
-        name: typeof data.name === "string" ? data.name : "N² Scrims",
-        season: typeof data.season === "string" ? data.season : "",
-        streamUrl: typeof data.streamUrl === "string" ? data.streamUrl : "",
-        prizeFirst: typeof data.prizeFirst === "string" ? data.prizeFirst : "",
-        prizeSecond: typeof data.prizeSecond === "string" ? data.prizeSecond : "",
-        prizeThird: typeof data.prizeThird === "string" ? data.prizeThird : "",
-        prizeMvp: typeof data.prizeMvp === "string" ? data.prizeMvp : "",
+        ...defaultTournamentSettings,
+        name:
+          typeof data.name === "string"
+            ? data.name
+            : defaultTournamentSettings.name,
+        season:
+          typeof data.season === "string"
+            ? data.season
+            : defaultTournamentSettings.season,
+        streamUrl:
+          typeof data.streamUrl === "string"
+            ? data.streamUrl
+            : defaultTournamentSettings.streamUrl,
+        prizeFirst:
+          typeof data.prizeFirst === "string"
+            ? data.prizeFirst
+            : defaultTournamentSettings.prizeFirst,
+        prizeSecond:
+          typeof data.prizeSecond === "string"
+            ? data.prizeSecond
+            : defaultTournamentSettings.prizeSecond,
+        prizeThird:
+          typeof data.prizeThird === "string"
+            ? data.prizeThird
+            : defaultTournamentSettings.prizeThird,
+        prizeMvp:
+          typeof data.prizeMvp === "string"
+            ? data.prizeMvp
+            : defaultTournamentSettings.prizeMvp,
       });
     });
     return () => { window.clearInterval(timer); unsubscribe(); };
