@@ -120,8 +120,6 @@ export default function RegisterPage() {
       return;
     }
 
-    setCheckingRegistration(true);
-
     const squadQuery = query(
       collection(db, "squads"),
       where("ownerUid", "==", user.uid)
