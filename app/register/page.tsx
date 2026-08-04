@@ -5,6 +5,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -60,6 +61,7 @@ export default function RegisterPage() {
   const [logoPreview, setLogoPreview] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   const [existingSquad, setExistingSquad] =
     useState<ExistingSquad | null>(null);
@@ -262,6 +264,34 @@ export default function RegisterPage() {
       logoUrl: result.logoUrl,
       logoPublicId: result.logoPublicId || "",
     };
+  }
+
+  async function handleWithdrawSquad() {
+    if (!user || !existingSquad || withdrawing) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Withdraw "${existingSquad.squadName}" from registration?\n\nThis permanently removes the squad registration. You can register again later if registration is still open.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setWithdrawing(true);
+    setMessage("");
+
+    try {
+      await deleteDoc(doc(db, "squads", existingSquad.id));
+      setExistingSquad(null);
+      setMessage("Your squad was withdrawn. You may register again while registration is open.");
+    } catch (error) {
+      console.error("Withdraw squad error:", error);
+      setMessage("Unable to withdraw your squad. Please try again.");
+    } finally {
+      setWithdrawing(false);
+    }
   }
 
   async function handleSubmit() {
@@ -568,10 +598,26 @@ export default function RegisterPage() {
             </>
           )}
 
+          {message && (
+            <div className="mt-6 rounded-xl border border-red-900 bg-red-950/30 p-4 text-red-300">
+              {message}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void handleWithdrawSquad()}
+            disabled={withdrawing}
+            className="mt-6 w-full rounded-xl border border-red-700 bg-red-950/40 px-6 py-4 font-black uppercase tracking-wide text-red-300 transition hover:bg-red-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {withdrawing ? "Withdrawing Squad..." : "Withdraw Squad"}
+          </button>
+
           <button
             type="button"
             onClick={() => router.push("/teams")}
-            className="mt-6 w-full rounded-xl border border-blue-600 px-6 py-4 font-bold uppercase tracking-wide text-blue-400 transition hover:bg-blue-600 hover:text-white"
+            disabled={withdrawing}
+            className="mt-4 w-full rounded-xl border border-blue-600 px-6 py-4 font-bold uppercase tracking-wide text-blue-400 transition hover:bg-blue-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             View Approved Squads
           </button>

@@ -10,6 +10,7 @@ import {
   query,
   Timestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import {
   onAuthStateChanged,
@@ -18,7 +19,7 @@ import {
   User,
 } from "firebase/auth";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { auth, db, googleProvider } from "@/firebase";
 
 type Player = {
@@ -33,6 +34,7 @@ type Squad = {
   squadName: string;
   players: Player[];
   logoUrl?: string;
+  logoPublicId?: string;
   ownerName?: string;
   ownerEmail?: string;
   facebookName?: string;
@@ -57,6 +59,14 @@ export default function AdminPage() {
     url: string;
     squadName: string;
   } | null>(null);
+  const [editingSquad, setEditingSquad] = useState<Squad | null>(null);
+  const [editSquadName, setEditSquadName] = useState("");
+  const [editFacebookName, setEditFacebookName] = useState("");
+  const [editPlayerNames, setEditPlayerNames] = useState(["", "", "", ""]);
+  const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
+  const [editLogoPreview, setEditLogoPreview] = useState("");
+  const [removeCurrentLogo, setRemoveCurrentLogo] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const isAdmin =
     user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
@@ -154,6 +164,8 @@ export default function AdminPage() {
           players: Array.isArray(data.players) ? data.players : [],
           logoUrl:
             typeof data.logoUrl === "string" ? data.logoUrl : "",
+          logoPublicId:
+            typeof data.logoPublicId === "string" ? data.logoPublicId : "",
           ownerName:
             typeof data.ownerName === "string" ? data.ownerName : "",
           ownerEmail:
@@ -240,6 +252,146 @@ export default function AdminPage() {
       console.error(error);
       setMessage("Unable to update squad status.");
     } finally {
+      setWorkingId(null);
+    }
+  }
+
+  function openEditSquad(squad: Squad) {
+    setEditingSquad(squad);
+    setEditSquadName(squad.squadName);
+    setEditFacebookName(squad.facebookName || "");
+    setEditPlayerNames([0, 1, 2, 3].map((index) => squad.players[index]?.name || ""));
+    setEditLogoFile(null);
+    setEditLogoPreview(squad.logoUrl || "");
+    setRemoveCurrentLogo(false);
+    setMessage("");
+  }
+
+  function closeEditSquad() {
+    if (savingEdit) return;
+    setEditingSquad(null);
+    setEditLogoFile(null);
+    setEditLogoPreview("");
+    setRemoveCurrentLogo(false);
+  }
+
+  function handleEditLogoChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setMessage("The logo must be a PNG, JPG, JPEG, or WebP image.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage("The logo must be smaller than 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setEditLogoFile(file);
+    setEditLogoPreview(URL.createObjectURL(file));
+    setRemoveCurrentLogo(false);
+  }
+
+  async function saveSquadEdits() {
+    if (!editingSquad || savingEdit) return;
+
+    const cleanSquadName = editSquadName.trim();
+    const cleanFacebookName = editFacebookName.trim();
+    const cleanPlayers = editPlayerNames.map((name) => name.trim());
+
+    if (!cleanSquadName) {
+      setMessage("Squad name is required.");
+      return;
+    }
+
+    if (cleanPlayers.some((name) => !name)) {
+      setMessage("All 4 player names are required.");
+      return;
+    }
+
+    if (new Set(cleanPlayers.map((name) => name.toLowerCase())).size !== 4) {
+      setMessage("Each player must have a different name.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setWorkingId(editingSquad.id);
+    setMessage("");
+
+    try {
+      const duplicateSnapshot = await getDocs(
+        query(
+          collection(db, "squads"),
+          where("squadNameLower", "==", cleanSquadName.toLowerCase()),
+        ),
+      );
+
+      if (duplicateSnapshot.docs.some((item) => item.id !== editingSquad.id)) {
+        setMessage("That squad name is already registered.");
+        return;
+      }
+
+      let logoUrl = removeCurrentLogo ? "" : editingSquad.logoUrl || "";
+      let logoPublicId = removeCurrentLogo ? "" : editingSquad.logoPublicId || "";
+
+      if (editLogoFile) {
+        const formData = new FormData();
+        formData.append("file", editLogoFile);
+
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.logoUrl) {
+          throw new Error(result.error || "Unable to upload the new logo.");
+        }
+
+        logoUrl = result.logoUrl;
+        logoPublicId = result.logoPublicId || "";
+      }
+
+      const players = cleanPlayers.map((name, index) => ({
+        name,
+        role: index === 0 ? "Captain" : `Player ${index + 1}`,
+      }));
+
+      await updateDoc(doc(db, "squads", editingSquad.id), {
+        squadName: cleanSquadName,
+        squadNameLower: cleanSquadName.toLowerCase(),
+        facebookName: cleanFacebookName,
+        players,
+        logoUrl,
+        logoPublicId,
+      });
+
+      setSquads((current) =>
+        current.map((squad) =>
+          squad.id === editingSquad.id
+            ? {
+                ...squad,
+                squadName: cleanSquadName,
+                facebookName: cleanFacebookName,
+                players,
+                logoUrl,
+                logoPublicId,
+              }
+            : squad,
+        ),
+      );
+
+      setMessage(`${cleanSquadName} was updated.`);
+      setEditingSquad(null);
+    } catch (error) {
+      console.error(error);
+      setMessage(error instanceof Error ? error.message : "Unable to update squad.");
+    } finally {
+      setSavingEdit(false);
       setWorkingId(null);
     }
   }
@@ -604,6 +756,14 @@ export default function AdminPage() {
                             <button
                               type="button"
                               disabled={isWorking}
+                              onClick={() => openEditSquad(squad)}
+                              className="rounded-lg border border-blue-600 bg-blue-950 px-3 py-2 text-xs font-black uppercase text-blue-300 disabled:opacity-40"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isWorking}
                               onClick={() =>
                                 void updateStatus(
                                   squad.id,
@@ -663,6 +823,63 @@ export default function AdminPage() {
           )}
         </div>
       </main>
+
+      {editingSquad && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/90 p-4 sm:p-8">
+          <div className="mx-auto w-full max-w-2xl rounded-3xl border border-blue-800 bg-gray-950 p-6 text-white sm:p-8">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-blue-400">Admin Edit</p>
+                <h2 className="mt-2 text-3xl font-black">Edit Squad</h2>
+              </div>
+              <button type="button" onClick={closeEditSquad} className="rounded-lg border border-gray-700 px-4 py-2 font-black">Close</button>
+            </div>
+
+            <label className="mt-7 block text-sm font-bold text-gray-300">Squad Name</label>
+            <input value={editSquadName} onChange={(event) => setEditSquadName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" />
+
+            <label className="mt-5 block text-sm font-bold text-gray-300">Facebook / Messenger Name</label>
+            <input value={editFacebookName} onChange={(event) => setEditFacebookName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" />
+
+            <div className="mt-6 rounded-2xl border border-gray-800 p-5">
+              <h3 className="text-xl font-black text-blue-300">Players</h3>
+              <div className="mt-4 space-y-3">
+                {editPlayerNames.map((name, index) => (
+                  <div key={index}>
+                    <label className="text-sm font-bold text-gray-400">{index === 0 ? "Player 1 — Captain" : `Player ${index + 1}`}</label>
+                    <input
+                      value={name}
+                      onChange={(event) => setEditPlayerNames((current) => current.map((item, playerIndex) => playerIndex === index ? event.target.value : item))}
+                      className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-blue-900 p-5">
+              <h3 className="text-xl font-black text-blue-300">Team Logo</h3>
+              {editLogoPreview && !removeCurrentLogo ? (
+                <img src={editLogoPreview} alt="Logo preview" className="mt-4 h-36 w-36 rounded-2xl border border-blue-800 object-contain p-2" />
+              ) : (
+                <div className="mt-4 flex h-36 w-36 items-center justify-center rounded-2xl border border-dashed border-gray-700 text-gray-500">No Logo</div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <label className="cursor-pointer rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase">
+                  Replace Logo
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleEditLogoChange} className="hidden" />
+                </label>
+                <button type="button" onClick={() => { setRemoveCurrentLogo(true); setEditLogoFile(null); setEditLogoPreview(""); }} className="rounded-xl border border-red-700 px-5 py-3 text-sm font-black uppercase text-red-300">Remove Logo</button>
+              </div>
+            </div>
+
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <button type="button" onClick={() => void saveSquadEdits()} disabled={savingEdit} className="flex-1 rounded-xl bg-green-700 px-6 py-4 font-black uppercase disabled:opacity-50">{savingEdit ? "Saving..." : "Save Changes"}</button>
+              <button type="button" onClick={closeEditSquad} disabled={savingEdit} className="flex-1 rounded-xl border border-gray-700 px-6 py-4 font-black uppercase disabled:opacity-50">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedLogo && (
         <div
