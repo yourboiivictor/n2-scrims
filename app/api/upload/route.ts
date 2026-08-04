@@ -13,14 +13,15 @@ const ALLOWED_FILE_TYPES = [
 
 export async function POST(request: NextRequest) {
   try {
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-    if (!cloudName || !uploadPreset) {
+    if (!cloudName || !apiKey || !apiSecret) {
       return NextResponse.json(
         {
           error:
-            "Cloudinary is not configured. Check your .env.local file.",
+            "Cloudinary is not configured on the server.",
         },
         { status: 500 },
       );
@@ -56,8 +57,23 @@ export async function POST(request: NextRequest) {
     const cloudinaryFormData = new FormData();
 
     cloudinaryFormData.append("file", file);
-    cloudinaryFormData.append("upload_preset", uploadPreset);
-    cloudinaryFormData.append("folder", "n2-scrims/squad-logos");
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = "n2-scrims/squad-logos";
+    const signatureBase = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
+
+    const signatureBuffer = await crypto.subtle.digest(
+      "SHA-1",
+      new TextEncoder().encode(signatureBase),
+    );
+
+    const signature = Array.from(new Uint8Array(signatureBuffer))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+
+    cloudinaryFormData.append("api_key", apiKey);
+    cloudinaryFormData.append("timestamp", String(timestamp));
+    cloudinaryFormData.append("signature", signature);
+    cloudinaryFormData.append("folder", folder);
 
     const cloudinaryResponse = await fetch(
       `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
@@ -85,9 +101,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        url: cloudinaryResult.secure_url,
-        secureUrl: cloudinaryResult.secure_url,
-        publicId: cloudinaryResult.public_id,
+        logoUrl: cloudinaryResult.secure_url,
+        logoPublicId: cloudinaryResult.public_id,
         width: cloudinaryResult.width,
         height: cloudinaryResult.height,
         format: cloudinaryResult.format,
