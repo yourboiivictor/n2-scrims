@@ -682,10 +682,6 @@ export default function RegisterPage() {
             Registration is currently open.
           </div>
 
-          <div className="mt-4 rounded-xl border border-blue-900 bg-blue-950/30 p-4 text-sm text-blue-200">
-            Your Facebook or Messenger name will only be used by the
-            admin after your squad is approved.
-          </div>
 
           {!user && (
             <div className="mt-6 rounded-xl border border-yellow-900 bg-yellow-950/30 p-4 text-yellow-300">
