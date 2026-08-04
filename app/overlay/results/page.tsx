@@ -22,10 +22,6 @@ type TournamentSettings = {
   season?: string;
   eventName?: string;
   matchesPlanned: number;
-  prizeFirst?: string;
-  prizeSecond?: string;
-  prizeThird?: string;
-  prizeMvp?: string;
   matchSchedule?: Array<{
     id: string;
     map: string;
@@ -61,10 +57,6 @@ const defaultTournament: TournamentSettings = {
   season: "Season 1",
   eventName: "Event 1",
   matchesPlanned: 1,
-  prizeFirst: "",
-  prizeSecond: "",
-  prizeThird: "",
-  prizeMvp: "",
   matchSchedule: [],
 };
 
@@ -279,13 +271,6 @@ export default function ResultsOverlayPage() {
     [results],
   );
 
-  const prizeItems = [
-    { label: "1ST", value: tournament.prizeFirst },
-    { label: "2ND", value: tournament.prizeSecond },
-    { label: "3RD", value: tournament.prizeThird },
-    { label: "MVP", value: tournament.prizeMvp },
-  ].filter((item) => item.value?.trim());
-
   return (
     <main className="h-screen overflow-hidden bg-[#02050b] p-3 text-white">
       <style jsx global>{`
@@ -337,12 +322,12 @@ export default function ResultsOverlayPage() {
                   .join(" • ")}
               </p>
 
-              <h1 className="mt-3 text-5xl font-black uppercase italic leading-none">
+              <h1 className="mt-3 text-[clamp(2.35rem,3.1vw,4.5rem)] font-black uppercase italic leading-none">
                 Match {liveMatch.matchNumber} Results
               </h1>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-2">
               <HeaderStat label="Map" value={currentMap} />
               <HeaderStat
                 label="Match Kills"
@@ -352,12 +337,22 @@ export default function ResultsOverlayPage() {
                 label="Duration"
                 value={liveMatch.duration || "—"}
               />
+              <HeaderStat
+                label="Status"
+                value={
+                  liveMatch.status === "finalized"
+                    ? "FINAL"
+                    : liveMatch.status === "live"
+                      ? "LIVE"
+                      : "READY"
+                }
+              />
             </div>
           </div>
         </header>
 
-        <section className="mt-3 grid min-h-0 grid-cols-[minmax(0,1.05fr)_minmax(500px,0.95fr)] gap-3">
-          <div className="grid min-h-0 grid-rows-[minmax(0,1.18fr)_minmax(0,0.72fr)_auto] gap-3">
+        <section className="mt-3 grid min-h-0 grid-cols-[minmax(0,0.95fr)_minmax(560px,1.05fr)] gap-3">
+          <div className="grid min-h-0 grid-rows-[minmax(0,1.22fr)_minmax(0,0.78fr)] gap-3">
             <section className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -367,6 +362,9 @@ export default function ResultsOverlayPage() {
                   <h2 className="mt-1 text-2xl font-black uppercase italic">
                     Top 3 Teams
                   </h2>
+                  <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-slate-500">
+                    Final placement • kills • points
+                  </p>
                 </div>
 
                 <span className="text-4xl">🏆</span>
@@ -375,7 +373,7 @@ export default function ResultsOverlayPage() {
               <div className="mt-3 grid min-h-0 grid-cols-3 gap-3">
                 {podium.length === 0 ? (
                   <div className="col-span-3 border border-white/10 bg-white/5 p-8 text-center text-base font-bold text-slate-400">
-                    Waiting for finalized match results...
+                    Results will appear when the match is finalized.
                   </div>
                 ) : (
                   podium.map((result, index) => (
@@ -423,29 +421,6 @@ export default function ResultsOverlayPage() {
               />
             </section>
 
-            {prizeItems.length > 0 && (
-              <section className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.26em] text-yellow-400">
-                  Prize Pool
-                </p>
-
-                <div className="mt-4 grid grid-cols-4 gap-3">
-                  {prizeItems.map((item) => (
-                    <div
-                      key={item.label}
-                      className="border border-white/10 bg-white/5 px-3 py-2 text-center"
-                    >
-                      <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
-                        {item.label}
-                      </p>
-                      <p className="mt-1 truncate text-xl font-black text-yellow-300">
-                        {item.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
           </div>
 
           <aside className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-4">
@@ -494,11 +469,11 @@ function HeaderStat({
   value: string;
 }) {
   return (
-    <div className="min-w-[115px] border border-white/10 bg-black/20 px-4 py-3 text-right">
+    <div className="min-w-[100px] border border-white/10 bg-black/20 px-4 py-3 text-right">
       <p className="text-[8px] font-black uppercase tracking-wider text-slate-500">
         {label}
       </p>
-      <p className="mt-1 truncate text-base font-black uppercase text-cyan-300">
+      <p className="mt-1 truncate text-sm font-black uppercase text-cyan-300">
         {value}
       </p>
     </div>
@@ -545,7 +520,7 @@ function PodiumCard({
         #{rank}
       </p>
 
-      <h3 className="mt-1 truncate text-xl font-black uppercase">
+      <h3 className="mt-1 truncate text-2xl font-black uppercase">
         {result.squadName}
       </h3>
 
@@ -586,7 +561,7 @@ function HighlightCard({
   logoUrl?: string;
 }) {
   return (
-    <article className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-3">
+    <article className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-3xl">{icon}</span>
 
@@ -602,13 +577,13 @@ function HighlightCard({
         )}
       </div>
 
-      <p className="mt-2 text-[8px] font-black uppercase tracking-[0.2em] text-cyan-300">
+      <p className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300">
         {title}
       </p>
-      <p className="mt-1 truncate text-xl font-black uppercase">
+      <p className="mt-1 truncate text-2xl font-black uppercase">
         {primary}
       </p>
-      <p className="mt-1 truncate text-xs font-black uppercase text-yellow-300">
+      <p className="mt-2 truncate text-sm font-black uppercase text-yellow-300">
         {secondary}
       </p>
     </article>
