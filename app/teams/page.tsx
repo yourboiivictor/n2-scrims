@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { db } from "../../firebase";
 
-const MAX_SQUADS = 25;
+const DEFAULT_MAX_SQUADS = 25;
+
+type MatchScheduleItem = {
+  id: string;
+  map: string;
+  startTime: string;
+};
+
+type TournamentSettings = {
+  maxSquads?: number;
+  matchSchedule?: MatchScheduleItem[];
+  maps?: string[];
+};
 
 type Player = {
   name: string;
@@ -25,6 +37,8 @@ export default function TeamsPage() {
   const [squads, setSquads] = useState<Squad[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [matchSchedule, setMatchSchedule] = useState<MatchScheduleItem[]>([]);
+  const [maxSquads, setMaxSquads] = useState(DEFAULT_MAX_SQUADS);
   const [expandedSquads, setExpandedSquads] = useState<Set<string>>(
     new Set()
   );
@@ -68,7 +82,65 @@ export default function TeamsPage() {
     return unsubscribe;
   }, []);
 
-  const spotsLeft = Math.max(MAX_SQUADS - squads.length, 0);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, "settings", "tournament"),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setMatchSchedule([]);
+          setMaxSquads(DEFAULT_MAX_SQUADS);
+          return;
+        }
+
+        const data = snapshot.data() as TournamentSettings;
+
+        if (Array.isArray(data.matchSchedule)) {
+          const schedule = data.matchSchedule
+            .map((match, index) => ({
+              id:
+                typeof match?.id === "string" && match.id
+                  ? match.id
+                  : `match-${index + 1}`,
+              map:
+                typeof match?.map === "string" && match.map
+                  ? match.map
+                  : "Map not set",
+              startTime:
+                typeof match?.startTime === "string"
+                  ? match.startTime
+                  : "",
+            }))
+            .filter((match) => match.map);
+
+          setMatchSchedule(schedule);
+        } else if (Array.isArray(data.maps)) {
+          setMatchSchedule(
+            data.maps
+              .filter((map): map is string => typeof map === "string")
+              .map((map, index) => ({
+                id: `match-${index + 1}`,
+                map,
+                startTime: "",
+              })),
+          );
+        } else {
+          setMatchSchedule([]);
+        }
+
+        setMaxSquads(
+          Math.max(1, Number(data.maxSquads) || DEFAULT_MAX_SQUADS),
+        );
+      },
+      (error) => {
+        console.error("Tournament settings error:", error);
+      },
+    );
+
+    return unsubscribe;
+  }, []);
+
+  const spotsLeft = Math.max(maxSquads - squads.length, 0);
 
   function toggleSquad(squadId: string) {
     setExpandedSquads((current) => {
@@ -111,6 +183,50 @@ export default function TeamsPage() {
           </p>
         </header>
 
+
+        <section className="mt-8 rounded-3xl border border-blue-900 bg-black/90 p-5 shadow-lg shadow-blue-950/20 sm:p-7">
+          <div className="text-center sm:text-left">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-400">
+              Tournament Schedule
+            </p>
+            <h2 className="mt-2 text-2xl font-black sm:text-3xl">
+              Match Maps
+            </h2>
+            <p className="mt-2 text-sm text-gray-400">
+              Maps are shown in the order they will be played.
+            </p>
+          </div>
+
+          {matchSchedule.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-gray-800 bg-gray-950/80 p-6 text-center text-gray-400">
+              The match schedule has not been announced yet.
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {matchSchedule.map((match, index) => (
+                <div
+                  key={match.id}
+                  className="relative overflow-hidden rounded-2xl border border-blue-800 bg-gradient-to-br from-blue-950/60 to-black p-5"
+                >
+                  <div className="absolute right-0 top-0 rounded-bl-2xl border-b border-l border-blue-800 bg-blue-950 px-3 py-2 text-xs font-black text-blue-300">
+                    #{index + 1}
+                  </div>
+
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-gray-500">
+                    Match {index + 1}
+                  </p>
+                  <p className="mt-3 text-2xl font-black uppercase text-white">
+                    {match.map}
+                  </p>
+                  <p className="mt-3 text-sm font-bold text-blue-300">
+                    {formatMatchTime(match.startTime)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-blue-900 bg-blue-950/30 p-5 text-center">
             <p className="text-sm font-bold uppercase tracking-wide text-gray-400">
@@ -127,7 +243,7 @@ export default function TeamsPage() {
               Maximum
             </p>
 
-            <p className="mt-2 text-3xl font-black">{MAX_SQUADS}</p>
+            <p className="mt-2 text-3xl font-black">{maxSquads}</p>
           </div>
 
           <div className="col-span-2 rounded-2xl border border-gray-800 bg-gray-950/80 p-5 text-center sm:col-span-1">
@@ -269,4 +385,21 @@ export default function TeamsPage() {
       </div>
     </main>
   );
+}
+
+function formatMatchTime(value: string) {
+  if (!value) return "Start time TBA";
+
+  const [hoursText, minutesText] = value.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return value;
+  }
+
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12;
+
+  return `${displayHours}:${String(minutes).padStart(2, "0")} ${suffix}`;
 }
