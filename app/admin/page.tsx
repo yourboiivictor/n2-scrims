@@ -35,6 +35,7 @@ type Squad = {
   logoUrl?: string;
   ownerName?: string;
   ownerEmail?: string;
+  facebookName?: string;
   status: SquadStatus;
   createdAt?: Timestamp | Date | null;
 };
@@ -157,6 +158,8 @@ export default function AdminPage() {
             typeof data.ownerName === "string" ? data.ownerName : "",
           ownerEmail:
             typeof data.ownerEmail === "string" ? data.ownerEmail : "",
+          facebookName:
+            typeof data.facebookName === "string" ? data.facebookName : "",
           status:
             data.status === "approved" || data.status === "rejected"
               ? data.status
@@ -283,6 +286,7 @@ export default function AdminPage() {
         squad.squadName.toLowerCase().includes(term) ||
         squad.ownerName?.toLowerCase().includes(term) ||
         squad.ownerEmail?.toLowerCase().includes(term) ||
+        squad.facebookName?.toLowerCase().includes(term) ||
         squad.status.toLowerCase().includes(term) ||
         playerNames.includes(term)
       );
@@ -502,7 +506,7 @@ export default function AdminPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search squad, player, email, or status..."
+              placeholder="Search squad, player, Messenger name, email, or status..."
               className="mt-3 w-full rounded-xl border border-gray-800 bg-gray-950 px-4 py-3 text-white outline-none"
             />
           </section>
@@ -513,13 +517,14 @@ export default function AdminPage() {
             </div>
           ) : (
             <div className="mt-6 overflow-x-auto rounded-2xl border border-blue-900 bg-black/90">
-              <table className="w-full min-w-[1100px] text-left text-sm">
+              <table className="w-full min-w-[1320px] text-left text-sm">
                 <thead className="border-b border-blue-900 bg-blue-950/30">
                   <tr className="text-xs uppercase tracking-wider text-blue-300">
                     <th className="px-3 py-3">#</th>
                     <th className="px-3 py-3">Logo</th>
                     <th className="px-3 py-3">Squad</th>
                     <th className="px-3 py-3">Players</th>
+                    <th className="px-3 py-3">Facebook / Messenger</th>
                     <th className="px-3 py-3">Registered By</th>
                     <th className="px-3 py-3">Status</th>
                     <th className="px-3 py-3">Actions</th>
@@ -566,6 +571,24 @@ export default function AdminPage() {
                           {squad.players
                             .map((player) => player.name)
                             .join(", ")}
+                        </td>
+                        <td className="px-3 py-3 text-xs">
+                          <div className="font-bold text-blue-300">
+                            {squad.facebookName || "—"}
+                          </div>
+                          {squad.facebookName && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void navigator.clipboard.writeText(
+                                  squad.facebookName || "",
+                                )
+                              }
+                              className="mt-2 rounded-lg border border-blue-800 px-3 py-1.5 text-[11px] font-black uppercase text-blue-300 hover:bg-blue-950"
+                            >
+                              Copy Name
+                            </button>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-xs">
                           <div>{squad.ownerName || "Unknown"}</div>

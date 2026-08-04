@@ -16,8 +16,6 @@ import {
 import { useRouter } from "next/navigation";
 import { auth, db } from "../../firebase";
 
-const ROOM_CODES_GROUP = "https://m.me/ch/AbYdfxf6YUCkPx7P/";
-
 const MAX_SQUADS = 25;
 const MAX_LOGO_SIZE = 5 * 1024 * 1024;
 
@@ -55,6 +53,7 @@ export default function RegisterPage() {
     useState(true);
 
   const [squadName, setSquadName] = useState("");
+  const [facebookName, setFacebookName] = useState("");
   const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -292,6 +291,7 @@ export default function RegisterPage() {
     }
 
     const cleanSquadName = squadName.trim();
+    const cleanFacebookName = facebookName.trim();
 
     const cleanPlayerNames = playerNames.map((name) =>
       name.trim()
@@ -299,6 +299,11 @@ export default function RegisterPage() {
 
     if (!cleanSquadName) {
       setMessage("Please enter your squad name.");
+      return;
+    }
+
+    if (!cleanFacebookName) {
+      setMessage("Please enter your Facebook or Messenger name.");
       return;
     }
 
@@ -414,12 +419,14 @@ export default function RegisterPage() {
         ownerUid: user.uid,
         ownerEmail: user.email || "",
         ownerName: user.displayName || "",
+        facebookName: cleanFacebookName,
 
         status: "pending",
         createdAt: serverTimestamp(),
       });
 
       setSquadName("");
+      setFacebookName("");
       setPlayerNames(["", "", "", ""]);
 
       removeLogo();
@@ -492,9 +499,8 @@ export default function RegisterPage() {
               </h2>
 
               <p className="mt-4 text-gray-300">
-                Your squad registration has been received. The
-                Messenger group invite will appear here after an
-                admin approves your squad.
+                Your squad registration has been received and is
+                waiting for an admin to review it.
               </p>
 
               <div className="mt-8 rounded-2xl border border-yellow-900 bg-yellow-950/30 p-6">
@@ -517,24 +523,26 @@ export default function RegisterPage() {
               </h2>
 
               <p className="mt-4 text-gray-300">
-                Your squad has been approved. Join the Messenger
-                group below to receive room IDs, passwords, and
-                tournament updates.
+                Your squad has been approved. An admin will add you
+                to the official N² Scrims Messenger Group Chat using
+                the Facebook or Messenger name you provided.
               </p>
 
               <div className="mt-8 rounded-2xl border border-blue-900 bg-blue-950/30 p-6">
                 <h3 className="text-xl font-black text-blue-400">
-                  Room Codes Group
+                  Messenger Group Chat
                 </h3>
 
-                <a
-                  href={ROOM_CODES_GROUP}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-6 inline-block w-full rounded-xl bg-blue-600 px-6 py-4 font-black uppercase tracking-wide transition hover:bg-blue-500"
-                >
-                  Join Messenger Group
-                </a>
+                <p className="mt-3 text-gray-300">
+                  Make sure your Facebook or Messenger account is
+                  searchable and not private so the admin can find
+                  and add you.
+                </p>
+
+                <p className="mt-4 font-bold text-blue-200">
+                  Once added, you will receive room IDs, passwords,
+                  and tournament updates in the group chat.
+                </p>
               </div>
             </>
           )}
@@ -550,8 +558,7 @@ export default function RegisterPage() {
               </h2>
 
               <p className="mt-4 text-gray-300">
-                Your squad registration was not approved. The
-                Messenger group invite is unavailable.
+                Your squad registration was not approved.
               </p>
 
               <div className="mt-8 rounded-2xl border border-red-900 bg-red-950/30 p-6">
@@ -667,8 +674,8 @@ export default function RegisterPage() {
           </h1>
 
           <p className="mt-3 text-gray-400">
-            Enter your squad name, upload a team logo, and add
-            exactly four players.
+            Enter your squad name, Facebook or Messenger name,
+            upload a team logo, and add exactly four players.
           </p>
 
           <div className="mt-5 rounded-xl border border-green-900 bg-green-950/30 p-4 text-sm text-green-300">
@@ -676,8 +683,8 @@ export default function RegisterPage() {
           </div>
 
           <div className="mt-4 rounded-xl border border-blue-900 bg-blue-950/30 p-4 text-sm text-blue-200">
-            The Messenger group invite will only be available after
-            your squad is approved.
+            Your Facebook or Messenger name will only be used by the
+            admin after your squad is approved.
           </div>
 
           {!user && (
@@ -713,6 +720,34 @@ export default function RegisterPage() {
               disabled={submitting}
               className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
             />
+          </div>
+
+          <div className="mt-8">
+            <label
+              htmlFor="facebook-name"
+              className="block text-sm font-bold text-gray-300"
+            >
+              Facebook / Messenger Name
+            </label>
+
+            <input
+              id="facebook-name"
+              type="text"
+              value={facebookName}
+              onChange={(event) =>
+                setFacebookName(event.target.value)
+              }
+              placeholder="Enter your exact Facebook or Messenger name"
+              maxLength={80}
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+
+            <p className="mt-2 text-sm text-gray-400">
+              Make sure your account is searchable and not private so
+              the admin can add you to the official group chat after
+              your squad is approved.
+            </p>
           </div>
 
           <div className="mt-8 rounded-2xl border border-blue-900 bg-blue-950/20 p-5 sm:p-6">
