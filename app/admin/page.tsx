@@ -541,57 +541,113 @@ export default function AdminPage() {
             </div>
           </header>
 
-          <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <AdminButton
-              href="/admin/matches"
-              title="Matches"
-              description="Create matches and manage live scoring"
-              icon="🎮"
-            />
-            <AdminButton
-              href="/admin/tournament"
-              title="Standings"
-              description="View and manage the tournament leaderboard"
-              icon="🏆"
-            />
-            <AdminButton
-              href="/admin/history"
-              title="History"
-              description="Review completed match results"
-              icon="📋"
-            />
-            <AdminButton
-              href="/admin/archive"
-              title="Archive"
-              description="Open previous tournament records"
-              icon="🗂️"
-            />
-            <AdminButton
-              href="/admin/settings"
-              title="Tournament Settings"
-              description="Edit tournament details, maps, and rules"
-              icon="⚙️"
-            />
-            <AdminButton
-              href="/admin/graphics"
-              title="Graphics"
-              description="Generate tournament result graphics"
-              icon="🖼️"
-            />
-            <AdminButton
-              href="/overlay"
-              title="Live Overlay"
-              description="Open the live side standings overlay"
-              icon="🎥"
-              openInNewTab
-            />
-            <AdminButton
-              href="/overlay/results"
-              title="Results Overlay"
-              description="Open the complete end-of-match results screen"
-              icon="🏁"
-              openInNewTab
-            />
+          <section className="mt-6">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-400">
+                Tournament Management
+              </p>
+              <h2 className="mt-2 text-2xl font-black uppercase">
+                Admin Tools
+              </h2>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <AdminButton
+                href="/admin/matches"
+                title="Matches"
+                description="Create matches and manage live scoring"
+                icon="🎮"
+              />
+              <AdminButton
+                href="/admin/tournament"
+                title="Standings"
+                description="View and manage the tournament leaderboard"
+                icon="🏆"
+              />
+              <AdminButton
+                href="/admin/history"
+                title="History"
+                description="Review completed match results"
+                icon="📋"
+              />
+              <AdminButton
+                href="/admin/archive"
+                title="Archive"
+                description="Open previous tournament records"
+                icon="🗂️"
+              />
+              <AdminButton
+                href="/admin/settings"
+                title="Tournament Settings"
+                description="Edit tournament details, maps, rules, and schedule"
+                icon="⚙️"
+              />
+              <AdminButton
+                href="/admin/graphics"
+                title="Graphics"
+                description="Generate tournament result graphics"
+                icon="🖼️"
+              />
+            </div>
+          </section>
+
+          <section className="mt-8 rounded-3xl border border-blue-900 bg-blue-950/10 p-5 sm:p-6">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-300">
+                Stream Control Center
+              </p>
+              <h2 className="mt-2 text-2xl font-black uppercase">
+                Overlays
+              </h2>
+              <p className="mt-2 text-sm text-gray-400">
+                Open any broadcast screen in a separate tab for TikTok Live Studio or OBS.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <AdminButton
+                href="/overlay"
+                title="Live Standings"
+                description="Open the live side standings overlay"
+                icon="🎥"
+                openInNewTab
+              />
+              <AdminButton
+                href="/overlay/results"
+                title="Match Results"
+                description="Open the complete end-of-match results screen"
+                icon="🏁"
+                openInNewTab
+              />
+              <AdminButton
+                href="/overlay/champion-team"
+                title="Champion Team"
+                description="Show the winning squad and all four player names"
+                icon="👑"
+                openInNewTab
+              />
+              <AdminButton
+                href="/overlay/champion"
+                title="Champion Card"
+                description="Open the compact tournament champion display"
+                icon="🏆"
+                openInNewTab
+              />
+              <AdminButton
+                href="/overlay/kill-leader"
+                title="Kill Leader"
+                description="Show the current tournament kill leader"
+                icon="🔥"
+                openInNewTab
+              />
+              <AdminButton
+                href="/overlay/top5"
+                title="Top 5"
+                description="Open the top-five tournament standings display"
+                icon="⭐"
+                openInNewTab
+              />
+            </div>
           </section>
 
           {message && (
