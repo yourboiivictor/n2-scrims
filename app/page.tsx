@@ -49,10 +49,18 @@ export default function Home() {
       }
 
       router.push("/register");
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorCode =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : "";
+
       if (
-        error?.code === "auth/cancelled-popup-request" ||
-        error?.code === "auth/popup-closed-by-user"
+        errorCode === "auth/cancelled-popup-request" ||
+        errorCode === "auth/popup-closed-by-user"
       ) {
         return;
       }
@@ -229,7 +237,7 @@ export default function Home() {
               "All player names must be accurate",
               "No cheating, teaming, exploits, or unfair play",
               "The organizer may reject invalid registrations",
-              "The Messenger group invite is provided after approval",
+              "Approved squads will receive tournament instructions from an admin",
               "Players must follow all tournament announcements",
             ].map((rule, index) => (
               <div
