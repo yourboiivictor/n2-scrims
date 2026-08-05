@@ -11,6 +11,7 @@ import {
   Timestamp,
   updateDoc,
   where,
+  getDoc,
 } from "firebase/firestore";
 import {
   onAuthStateChanged,
@@ -42,7 +43,7 @@ type Squad = {
   createdAt?: Timestamp | Date | null;
 };
 
-const ADMIN_EMAIL = "victornicetry2@gmail.com";
+const OWNER_EMAIL = "victornicetry2@gmail.com";
 
 export default function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -67,9 +68,12 @@ export default function AdminPage() {
   const [editLogoPreview, setEditLogoPreview] = useState("");
   const [removeCurrentLogo, setRemoveCurrentLogo] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [hasAdminAccess, setHasAdminAccess] = useState(false);
 
-  const isAdmin =
-    user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isOwner =
+    user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+  const isAdmin = isOwner || hasAdminAccess;
 
   useEffect(() => {
     return onAuthStateChanged(auth, (currentUser) => {
@@ -77,6 +81,51 @@ export default function AdminPage() {
       setAuthLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkStaffAccess() {
+      if (!user?.email) {
+        setHasAdminAccess(false);
+        setStaffLoading(false);
+        return;
+      }
+
+      if (user.email.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
+        setHasAdminAccess(true);
+        setStaffLoading(false);
+        return;
+      }
+
+      try {
+        setStaffLoading(true);
+        const staffSnapshot = await getDoc(
+          doc(db, "staff", user.email.toLowerCase()),
+        );
+
+        if (!cancelled) {
+          const data = staffSnapshot.data();
+          setHasAdminAccess(
+            staffSnapshot.exists() &&
+              data?.active === true &&
+              data?.role === "admin",
+          );
+        }
+      } catch (error) {
+        console.error("Unable to verify staff access:", error);
+        if (!cancelled) setHasAdminAccess(false);
+      } finally {
+        if (!cancelled) setStaffLoading(false);
+      }
+    }
+
+    void checkStaffAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (isAdmin) {
@@ -455,7 +504,7 @@ export default function AdminPage() {
     (squad) => squad.status === "rejected",
   ).length;
 
-  if (authLoading) {
+  if (authLoading || staffLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-white">
         Loading admin page...
@@ -588,6 +637,14 @@ export default function AdminPage() {
                 description="Generate tournament result graphics"
                 icon="🖼️"
               />
+              {isOwner && (
+                <AdminButton
+                  href="/admin/staff"
+                  title="Staff Management"
+                  description="Add or remove administrators"
+                  icon="👑"
+                />
+              )}
             </div>
           </section>
 
