@@ -5,6 +5,7 @@ import {
   collectionGroup,
   doc,
   getDocs,
+  getDoc,
   onSnapshot,
   query,
   serverTimestamp,
@@ -33,7 +34,7 @@ import {
   TournamentSettings,
 } from "@/lib/tournamentClient";
 
-const ADMIN_EMAIL = "victornicetry2@gmail.com";
+const OWNER_EMAIL = "victornicetry2@gmail.com";
 type SquadPlayer = {
   name?: string;
   playerName?: string;
@@ -221,13 +222,16 @@ export default function AdminMatchesPage() {
   const [savingSquadId, setSavingSquadId] = useState<
     string | null
   >(null);
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [hasAdminAccess, setHasAdminAccess] = useState(false);
 
   const saveTimers = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({});
 
-  const isAdmin =
-    user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isOwner =
+    user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+  const isAdmin = isOwner || hasAdminAccess;
 
   const matchId = useMemo(
     () => `match-${liveSettings.matchNumber}`,
@@ -916,6 +920,53 @@ return {};
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function checkStaffAccess() {
+      if (!user?.email) {
+        setHasAdminAccess(false);
+        setStaffLoading(false);
+        return;
+      }
+
+      const normalizedEmail = user.email.toLowerCase();
+
+      if (normalizedEmail === OWNER_EMAIL.toLowerCase()) {
+        setHasAdminAccess(true);
+        setStaffLoading(false);
+        return;
+      }
+
+      try {
+        setStaffLoading(true);
+        const staffSnapshot = await getDoc(
+          doc(db, "staff", normalizedEmail),
+        );
+
+        if (!cancelled) {
+          const data = staffSnapshot.data();
+          setHasAdminAccess(
+            staffSnapshot.exists() &&
+              data?.active === true &&
+              data?.role === "admin",
+          );
+        }
+      } catch (error) {
+        console.error("Unable to verify staff access:", error);
+        if (!cancelled) setHasAdminAccess(false);
+      } finally {
+        if (!cancelled) setStaffLoading(false);
+      }
+    }
+
+    void checkStaffAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
     if (!isAdmin) {
       setApprovedSquads([]);
       setSquadsLoading(false);
@@ -1140,7 +1191,7 @@ return {};
     };
   }, []);
 
-  if (authLoading) {
+  if (authLoading || staffLoading) {
     return (
       <main className="min-h-screen bg-slate-950 p-6 text-white">
         Checking admin account...
