@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -8,6 +9,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   Timestamp,
   updateDoc,
   where,
@@ -40,6 +42,7 @@ type Squad = {
   ownerEmail?: string;
   facebookName?: string;
   status: SquadStatus;
+  slot?: number;
   createdAt?: Timestamp | Date | null;
 };
 
@@ -68,6 +71,14 @@ export default function AdminPage() {
   const [editLogoPreview, setEditLogoPreview] = useState("");
   const [removeCurrentLogo, setRemoveCurrentLogo] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [showAddSquad, setShowAddSquad] = useState(false);
+  const [newSquadName, setNewSquadName] = useState("");
+  const [newFacebookName, setNewFacebookName] = useState("");
+  const [newPlayerNames, setNewPlayerNames] = useState(["", "", "", ""]);
+  const [newSlot, setNewSlot] = useState("");
+  const [newLogoFile, setNewLogoFile] = useState<File | null>(null);
+  const [newLogoPreview, setNewLogoPreview] = useState("");
+  const [savingNewSquad, setSavingNewSquad] = useState(false);
   const [staffLoading, setStaffLoading] = useState(true);
   const [hasAdminAccess, setHasAdminAccess] = useState(false);
 
@@ -225,6 +236,7 @@ export default function AdminPage() {
             data.status === "approved" || data.status === "rejected"
               ? data.status
               : "pending",
+          slot: typeof data.slot === "number" ? data.slot : undefined,
           createdAt: data.createdAt || null,
         };
       });
@@ -302,6 +314,143 @@ export default function AdminPage() {
       setMessage("Unable to update squad status.");
     } finally {
       setWorkingId(null);
+    }
+  }
+
+  function resetAddSquadForm() {
+    setNewSquadName("");
+    setNewFacebookName("");
+    setNewPlayerNames(["", "", "", ""]);
+    setNewSlot("");
+    setNewLogoFile(null);
+    setNewLogoPreview("");
+  }
+
+  function closeAddSquad() {
+    if (savingNewSquad) return;
+    setShowAddSquad(false);
+    resetAddSquadForm();
+  }
+
+  function handleNewLogoChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setMessage("The logo must be a PNG, JPG, JPEG, or WebP image.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage("The logo must be smaller than 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setNewLogoFile(file);
+    setNewLogoPreview(URL.createObjectURL(file));
+  }
+
+  async function createAdminSquad() {
+    if (!user || savingNewSquad) return;
+
+    const cleanSquadName = newSquadName.trim();
+    const cleanFacebookName = newFacebookName.trim();
+    const cleanPlayers = newPlayerNames.map((name) => name.trim());
+    const parsedSlot = newSlot.trim() ? Number.parseInt(newSlot, 10) : null;
+
+    if (!cleanSquadName) {
+      setMessage("Squad name is required.");
+      return;
+    }
+
+    if (cleanPlayers.some((name) => !name)) {
+      setMessage("All 4 player names are required.");
+      return;
+    }
+
+    if (new Set(cleanPlayers.map((name) => name.toLowerCase())).size !== 4) {
+      setMessage("Each player must have a different name.");
+      return;
+    }
+
+    if (parsedSlot !== null && (Number.isNaN(parsedSlot) || parsedSlot < 1)) {
+      setMessage("Slot must be a positive number.");
+      return;
+    }
+
+    setSavingNewSquad(true);
+    setMessage("");
+
+    try {
+      const duplicateSnapshot = await getDocs(
+        query(
+          collection(db, "squads"),
+          where("squadNameLower", "==", cleanSquadName.toLowerCase()),
+        ),
+      );
+
+      if (!duplicateSnapshot.empty) {
+        setMessage("That squad name is already registered.");
+        return;
+      }
+
+      let logoUrl = "";
+      let logoPublicId = "";
+
+      if (newLogoFile) {
+        const formData = new FormData();
+        formData.append("file", newLogoFile);
+
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.logoUrl) {
+          throw new Error(result.error || "Unable to upload the team logo.");
+        }
+
+        logoUrl = result.logoUrl;
+        logoPublicId = result.logoPublicId || "";
+      }
+
+      const players = cleanPlayers.map((name, index) => ({
+        name,
+        role: index === 0 ? "Captain" : `Player ${index + 1}`,
+      }));
+
+      const payload: Record<string, unknown> = {
+        squadName: cleanSquadName,
+        squadNameLower: cleanSquadName.toLowerCase(),
+        facebookName: cleanFacebookName,
+        players,
+        logoUrl,
+        logoPublicId,
+        status: "approved",
+        ownerUid: user.uid,
+        ownerName: user.displayName || "Admin",
+        ownerEmail: user.email || "",
+        createdByAdmin: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (parsedSlot !== null) payload.slot = parsedSlot;
+
+      await addDoc(collection(db, "squads"), payload);
+
+      setMessage(`${cleanSquadName} was added and approved.`);
+      setShowAddSquad(false);
+      resetAddSquadForm();
+      await loadSquads();
+    } catch (error) {
+      console.error("Unable to add squad:", error);
+      setMessage(error instanceof Error ? error.message : "Unable to add squad.");
+    } finally {
+      setSavingNewSquad(false);
     }
   }
 
@@ -579,6 +728,18 @@ export default function AdminPage() {
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
+                  onClick={() => {
+                    resetAddSquadForm();
+                    setShowAddSquad(true);
+                    setMessage("");
+                  }}
+                  className="rounded-xl bg-green-700 px-5 py-3 text-sm font-black uppercase hover:bg-green-600"
+                >
+                  + Add Squad
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => void loadSquads()}
                   disabled={loadingSquads}
                   className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase disabled:opacity-50"
@@ -788,6 +949,7 @@ export default function AdminPage() {
                     <th className="px-3 py-3">#</th>
                     <th className="px-3 py-3">Logo</th>
                     <th className="px-3 py-3">Squad</th>
+                    <th className="px-3 py-3">Slot</th>
                     <th className="px-3 py-3">Players</th>
                     <th className="px-3 py-3">Facebook / Messenger</th>
                     <th className="px-3 py-3">Registered By</th>
@@ -831,6 +993,9 @@ export default function AdminPage() {
                         </td>
                         <td className="px-3 py-3 font-black">
                           {squad.squadName}
+                        </td>
+                        <td className="px-3 py-3 font-black text-blue-300">
+                          {squad.slot ?? "—"}
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-300">
                           {squad.players
@@ -936,6 +1101,75 @@ export default function AdminPage() {
           )}
         </div>
       </main>
+
+      {showAddSquad && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/90 p-4 sm:p-8">
+          <div className="mx-auto w-full max-w-2xl rounded-3xl border border-green-800 bg-gray-950 p-6 text-white sm:p-8">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-green-400">Admin Squad Manager</p>
+                <h2 className="mt-2 text-3xl font-black">Add Squad</h2>
+                <p className="mt-2 text-sm text-gray-400">This squad will be approved immediately. No separate Gmail account is required.</p>
+              </div>
+              <button type="button" onClick={closeAddSquad} className="rounded-lg border border-gray-700 px-4 py-2 font-black">Close</button>
+            </div>
+
+            <div className="mt-7 grid gap-4 sm:grid-cols-[minmax(0,1fr)_150px]">
+              <label className="block">
+                <span className="text-sm font-bold text-gray-300">Squad Name</span>
+                <input value={newSquadName} onChange={(event) => setNewSquadName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" placeholder="Squad name" />
+              </label>
+              <label className="block">
+                <span className="text-sm font-bold text-gray-300">Slot (optional)</span>
+                <input type="number" min={1} value={newSlot} onChange={(event) => setNewSlot(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" placeholder="1" />
+              </label>
+            </div>
+
+            <label className="mt-5 block text-sm font-bold text-gray-300">Facebook / Messenger Name (optional)</label>
+            <input value={newFacebookName} onChange={(event) => setNewFacebookName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" placeholder="Messenger name" />
+
+            <div className="mt-6 rounded-2xl border border-gray-800 p-5">
+              <h3 className="text-xl font-black text-blue-300">Players</h3>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {newPlayerNames.map((name, index) => (
+                  <label key={index} className="block">
+                    <span className="text-sm font-bold text-gray-400">{index === 0 ? "Player 1 — Captain" : `Player ${index + 1}`}</span>
+                    <input
+                      value={name}
+                      onChange={(event) => setNewPlayerNames((current) => current.map((item, playerIndex) => playerIndex === index ? event.target.value : item))}
+                      className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3"
+                      placeholder={`Player ${index + 1} name`}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-blue-900 p-5">
+              <h3 className="text-xl font-black text-blue-300">Team Logo (optional)</h3>
+              {newLogoPreview ? (
+                <img src={newLogoPreview} alt="New squad logo preview" className="mt-4 h-36 w-36 rounded-2xl border border-blue-800 object-contain p-2" />
+              ) : (
+                <div className="mt-4 flex h-36 w-36 items-center justify-center rounded-2xl border border-dashed border-gray-700 text-gray-500">No Logo</div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <label className="cursor-pointer rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase">
+                  Upload Logo
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleNewLogoChange} className="hidden" />
+                </label>
+                {newLogoPreview && (
+                  <button type="button" onClick={() => { setNewLogoFile(null); setNewLogoPreview(""); }} className="rounded-xl border border-red-700 px-5 py-3 text-sm font-black uppercase text-red-300">Remove Logo</button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <button type="button" onClick={() => void createAdminSquad()} disabled={savingNewSquad} className="flex-1 rounded-xl bg-green-700 px-6 py-4 font-black uppercase disabled:opacity-50">{savingNewSquad ? "Adding Squad..." : "Add & Approve Squad"}</button>
+              <button type="button" onClick={closeAddSquad} disabled={savingNewSquad} className="flex-1 rounded-xl border border-gray-700 px-6 py-4 font-black uppercase disabled:opacity-50">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingSquad && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/90 p-4 sm:p-8">
