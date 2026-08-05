@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { signInWithPopup } from "firebase/auth";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { onAuthStateChanged, signInWithPopup, User } from "firebase/auth";
+import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { auth, db, googleProvider } from "../firebase";
 
 const MAX_SQUADS = 25;
+const OWNER_EMAIL = "victornicetry2@gmail.com";
 
 export default function Home() {
   const router = useRouter();
@@ -15,6 +16,70 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState("");
   const [approvedSquads, setApprovedSquads] = useState(0);
   const [loadingSquads, setLoadingSquads] = useState(true);
+  const [user, setUser] = useState<User | null>(auth.currentUser);
+  const [checkingStaff, setCheckingStaff] = useState(true);
+  const [hasAdminAccess, setHasAdminAccess] = useState(false);
+
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkStaffAccess() {
+      if (!user?.email) {
+        setHasAdminAccess(false);
+        setCheckingStaff(false);
+        return;
+      }
+
+      const normalizedEmail = user.email.toLowerCase();
+
+      if (normalizedEmail === OWNER_EMAIL) {
+        setHasAdminAccess(true);
+        setCheckingStaff(false);
+        return;
+      }
+
+      try {
+        setCheckingStaff(true);
+
+        const staffSnapshot = await getDoc(
+          doc(db, "staff", normalizedEmail),
+        );
+
+        if (!cancelled) {
+          const data = staffSnapshot.data();
+
+          setHasAdminAccess(
+            staffSnapshot.exists() &&
+              data?.active === true &&
+              data?.role === "admin",
+          );
+        }
+      } catch (error) {
+        console.error("Unable to verify admin access:", error);
+
+        if (!cancelled) {
+          setHasAdminAccess(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingStaff(false);
+        }
+      }
+    }
+
+    void checkStaffAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     const approvedSquadsQuery = query(
@@ -131,6 +196,17 @@ export default function Home() {
             >
               View Approved Squads
             </button>
+
+
+            {user && hasAdminAccess && !checkingStaff && (
+              <button
+                type="button"
+                onClick={() => router.push("/admin")}
+                className="w-full rounded-xl border border-yellow-500 bg-yellow-500/10 px-8 py-4 font-bold uppercase tracking-wide text-yellow-300 transition hover:bg-yellow-500 hover:text-black sm:w-auto"
+              >
+                Admin Dashboard
+              </button>
+            )}
 
             <button
               type="button"
