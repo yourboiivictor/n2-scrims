@@ -101,12 +101,14 @@ export default function ResultsGraphicsPage() {
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const headerGradient = ctx.createLinearGradient(0, 0, 1080, 500);
-    headerGradient.addColorStop(0, "rgba(76, 29, 149, 0.72)");
-    headerGradient.addColorStop(0.55, "rgba(30, 27, 75, 0.48)");
+    const headerGradient = ctx.createLinearGradient(0, 0, 1080, 560);
+    headerGradient.addColorStop(0, "rgba(8, 145, 178, 0.62)");
+    headerGradient.addColorStop(0.5, "rgba(15, 118, 110, 0.34)");
     headerGradient.addColorStop(1, "rgba(2, 6, 23, 0)");
     ctx.fillStyle = headerGradient;
     ctx.fillRect(0, 0, 1080, 560);
+
+    drawPolynesianInspiredPattern(ctx, canvas.width, canvas.height);
 
     try {
       const n2Logo = await loadCanvasImage("/n2-logo.png");
@@ -124,7 +126,7 @@ export default function ResultsGraphicsPage() {
     ctx.fillText(settings.name || "N² Scrims", 540, 165);
 
     ctx.font = "700 34px Arial";
-    ctx.fillStyle = "#ddd6fe";
+    ctx.fillStyle = "#a5f3fc";
     ctx.fillText(
       `${settings.season ? `Season ${settings.season} · ` : ""}Overall Standings`,
       540,
@@ -371,6 +373,63 @@ function drawImageContained(
   const drawY = y + (height - drawHeight) / 2;
 
   ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
+function drawPolynesianInspiredPattern(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+) {
+  ctx.save();
+  ctx.globalAlpha = 0.11;
+  ctx.strokeStyle = "#67e8f9";
+  ctx.fillStyle = "#2dd4bf";
+  ctx.lineWidth = 5;
+
+  // Polynesian-inspired geometric border bands. These are original
+  // canvas motifs rather than copied traditional artwork.
+  const bandWidth = 62;
+  const step = 72;
+
+  for (let y = 20; y < height; y += step) {
+    // Left repeating spear/chevron motif.
+    ctx.beginPath();
+    ctx.moveTo(12, y + 30);
+    ctx.lineTo(12 + bandWidth / 2, y);
+    ctx.lineTo(12 + bandWidth, y + 30);
+    ctx.lineTo(12 + bandWidth / 2, y + 60);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Right mirrored motif.
+    const right = width - 12 - bandWidth;
+    ctx.beginPath();
+    ctx.moveTo(right, y + 30);
+    ctx.lineTo(right + bandWidth / 2, y);
+    ctx.lineTo(right + bandWidth, y + 30);
+    ctx.lineTo(right + bandWidth / 2, y + 60);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // Faint center triangles and stepped shapes behind the standings.
+  ctx.globalAlpha = 0.045;
+  ctx.lineWidth = 4;
+  for (let y = 500; y < height - 160; y += 150) {
+    for (let x = 150; x < width - 150; x += 130) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + 54);
+      ctx.lineTo(x + 32, y);
+      ctx.lineTo(x + 64, y + 54);
+      ctx.lineTo(x + 48, y + 54);
+      ctx.lineTo(x + 32, y + 28);
+      ctx.lineTo(x + 16, y + 54);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawRoundedRectangle(
