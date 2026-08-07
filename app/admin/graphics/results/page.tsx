@@ -94,15 +94,29 @@ export default function ResultsGraphicsPage() {
     canvas.width = 1080;
     canvas.height = 1920;
 
-    ctx.fillStyle = "#020617";
+    const background = ctx.createLinearGradient(0, 0, 1080, 1920);
+    background.addColorStop(0, "#050816");
+    background.addColorStop(0.45, "#0b1020");
+    background.addColorStop(1, "#020617");
+    ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const gradient = ctx.createLinearGradient(0, 0, 1080, 500);
-    gradient.addColorStop(0, "#7c3aed");
-    gradient.addColorStop(1, "#111827");
+    const headerGradient = ctx.createLinearGradient(0, 0, 1080, 500);
+    headerGradient.addColorStop(0, "rgba(76, 29, 149, 0.72)");
+    headerGradient.addColorStop(0.55, "rgba(30, 27, 75, 0.48)");
+    headerGradient.addColorStop(1, "rgba(2, 6, 23, 0)");
+    ctx.fillStyle = headerGradient;
+    ctx.fillRect(0, 0, 1080, 560);
 
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 1080, 500);
+    try {
+      const n2Logo = await loadCanvasImage("/n2-logo.png");
+      ctx.save();
+      ctx.globalAlpha = 0.075;
+      drawImageContained(ctx, n2Logo, 170, 600, 740, 740);
+      ctx.restore();
+    } catch (error) {
+      console.warn("Unable to load N² watermark:", error);
+    }
 
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
@@ -140,12 +154,15 @@ export default function ResultsGraphicsPage() {
     topTen.forEach((row, index) => {
       const y = 560 + index * 118;
 
-      ctx.fillStyle = index < 3 ? "#1e1b4b" : "#0f172a";
+      const rowBackgrounds = ["#D4AF37", "#C0C0C0", "#CD7F32"];
+      const rowTextColors = ["#17130A", "#111827", "#1C1008"];
+
+      ctx.fillStyle = rowBackgrounds[index] ?? "#0f172a";
       drawRoundedRectangle(ctx, 70, y, 940, 92, 18);
       ctx.fill();
 
       ctx.textAlign = "left";
-      ctx.fillStyle = "#a78bfa";
+      ctx.fillStyle = rowTextColors[index] ?? "#a78bfa";
       ctx.font = "900 34px Arial";
       ctx.fillText(`#${index + 1}`, 100, y + 58);
 
@@ -172,12 +189,12 @@ export default function ResultsGraphicsPage() {
       }
 
       ctx.textAlign = "left";
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = rowTextColors[index] ?? "#ffffff";
       ctx.font = "900 30px Arial";
       ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
 
       ctx.textAlign = "right";
-      ctx.fillStyle = "#facc15";
+      ctx.fillStyle = rowTextColors[index] ?? "#facc15";
       ctx.font = "900 34px Arial";
       ctx.fillText(String(row.totalPoints), 940, y + 57);
     });
@@ -255,10 +272,18 @@ export default function ResultsGraphicsPage() {
               {standings.slice(0, 10).map((row, index) => (
                 <div
                   key={row.squadId}
-                  className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-4 py-3"
+                  className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+                    index === 0
+                      ? "border-yellow-300/60 bg-yellow-500 text-slate-950"
+                      : index === 1
+                        ? "border-slate-200/60 bg-slate-300 text-slate-950"
+                        : index === 2
+                          ? "border-orange-300/60 bg-orange-700 text-white"
+                          : "border-white/10 bg-black/20 text-white"
+                  }`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="w-8 shrink-0 font-black text-violet-400">
+                    <span className={`w-8 shrink-0 font-black ${index < 3 ? "text-current" : "text-violet-400"}`}>
                       #{index + 1}
                     </span>
 
@@ -281,7 +306,7 @@ export default function ResultsGraphicsPage() {
                     </span>
                   </div>
 
-                  <span className="font-black text-violet-400">
+                  <span className={`font-black ${index < 3 ? "text-current" : "text-violet-400"}`}>
                     {row.totalPoints}
                   </span>
                 </div>
