@@ -159,12 +159,16 @@ export default function ResultsGraphicsPage() {
       const rowBackgrounds = ["#ffffff", "#d4d4d4", "#737373"];
       const rowTextColors = ["#000000", "#000000", "#ffffff"];
 
-      ctx.fillStyle = rowBackgrounds[index] ?? "#0f172a";
+      if (index < 3) {
+        ctx.fillStyle = rowBackgrounds[index];
+      } else {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.055)";
+      }
       drawRoundedRectangle(ctx, 70, y, 940, 92, 18);
       ctx.fill();
 
       ctx.textAlign = "left";
-      ctx.fillStyle = rowTextColors[index] ?? "#a78bfa";
+      ctx.fillStyle = rowTextColors[index] ?? "#ffffff";
       ctx.font = "900 34px Arial";
       ctx.fillText(`#${index + 1}`, 100, y + 58);
 
@@ -173,7 +177,7 @@ export default function ResultsGraphicsPage() {
       const logoY = y + 12;
       const logoSize = 68;
 
-      ctx.fillStyle = "#050505";
+      ctx.fillStyle = "#ffffff";
       drawRoundedRectangle(ctx, logoX, logoY, logoSize, logoSize, 14);
       ctx.fill();
 
@@ -181,7 +185,7 @@ export default function ResultsGraphicsPage() {
         drawImageContained(ctx, logo, logoX + 5, logoY + 5, logoSize - 10, logoSize - 10);
       } else {
         ctx.textAlign = "center";
-        ctx.fillStyle = "#64748b";
+        ctx.fillStyle = "#737373";
         ctx.font = "900 24px Arial";
         ctx.fillText(
           row.squadName.trim().charAt(0).toUpperCase() || "?",
@@ -196,13 +200,13 @@ export default function ResultsGraphicsPage() {
       ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
 
       ctx.textAlign = "right";
-      ctx.fillStyle = rowTextColors[index] ?? "#facc15";
+      ctx.fillStyle = rowTextColors[index] ?? "#ffffff";
       ctx.font = "900 34px Arial";
       ctx.fillText(String(row.totalPoints), 940, y + 57);
     });
 
     ctx.textAlign = "center";
-    ctx.fillStyle = "#94a3b8";
+    ctx.fillStyle = "#a3a3a3";
     ctx.font = "700 24px Arial";
     ctx.fillText("N² SCRIMS", 540, 1810);
 
@@ -231,9 +235,9 @@ export default function ResultsGraphicsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-5 text-white">
+    <main className="min-h-screen bg-black px-4 py-5 text-white">
       <div className="mx-auto max-w-6xl">
-        <header className="rounded-2xl border border-white/10 bg-slate-900 p-5">
+        <header className="rounded-2xl border border-white/10 bg-neutral-950 p-5">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-neutral-300">
             N² Scrims Admin
           </p>
@@ -244,7 +248,7 @@ export default function ResultsGraphicsPage() {
                 Results Graphics
               </h1>
 
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-neutral-400">
                 Generate a 1080 × 1920 tournament-results image.
               </p>
             </div>
@@ -258,14 +262,14 @@ export default function ResultsGraphicsPage() {
           </div>
 
           {message && (
-            <div className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+            <div className="mt-4 rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-sm text-white">
               {message}
             </div>
           )}
         </header>
 
         <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_420px]">
-          <div className="rounded-2xl border border-white/10 bg-slate-900 p-5">
+          <div className="rounded-2xl border border-white/10 bg-neutral-950 p-5">
             <h2 className="text-xl font-black">
               Top 10 Preview
             </h2>
@@ -281,7 +285,7 @@ export default function ResultsGraphicsPage() {
                         ? "border-neutral-300 bg-neutral-300 text-black"
                         : index === 2
                           ? "border-neutral-500 bg-neutral-500 text-white"
-                          : "border-white/10 bg-black/20 text-white"
+                          : "border-white/15 bg-white/[0.05] text-white backdrop-blur-sm"
                   }`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
@@ -289,7 +293,7 @@ export default function ResultsGraphicsPage() {
                       #{index + 1}
                     </span>
 
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-slate-950 p-1">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white bg-white p-1">
                       {squadLogos[row.squadId] ? (
                         <img
                           src={squadLogos[row.squadId]}
@@ -297,7 +301,7 @@ export default function ResultsGraphicsPage() {
                           className="h-full w-full object-contain"
                         />
                       ) : (
-                        <span className="text-sm font-black text-slate-500">
+                        <span className="text-sm font-black text-neutral-500">
                           {row.squadName.trim().charAt(0).toUpperCase() || "?"}
                         </span>
                       )}
@@ -325,7 +329,7 @@ export default function ResultsGraphicsPage() {
             </button>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+          <div className="rounded-2xl border border-white/10 bg-neutral-950 p-4">
             <canvas
               ref={canvasRef}
               className="h-auto w-full rounded-xl border border-white/10"
