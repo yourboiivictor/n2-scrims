@@ -95,16 +95,16 @@ export default function ResultsGraphicsPage() {
     canvas.height = 1920;
 
     const background = ctx.createLinearGradient(0, 0, 1080, 1920);
-    background.addColorStop(0, "#050816");
-    background.addColorStop(0.45, "#0b1020");
-    background.addColorStop(1, "#020617");
+    background.addColorStop(0, "#000000");
+    background.addColorStop(0.45, "#0a0a0a");
+    background.addColorStop(1, "#050505");
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const headerGradient = ctx.createLinearGradient(0, 0, 1080, 560);
-    headerGradient.addColorStop(0, "rgba(8, 145, 178, 0.62)");
-    headerGradient.addColorStop(0.5, "rgba(15, 118, 110, 0.34)");
-    headerGradient.addColorStop(1, "rgba(2, 6, 23, 0)");
+    const headerGradient = ctx.createLinearGradient(0, 0, 1080, 500);
+    headerGradient.addColorStop(0, "rgba(255, 255, 255, 0.16)");
+    headerGradient.addColorStop(0.55, "rgba(255, 255, 255, 0.08)");
+    headerGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
     ctx.fillStyle = headerGradient;
     ctx.fillRect(0, 0, 1080, 560);
 
@@ -126,7 +126,7 @@ export default function ResultsGraphicsPage() {
     ctx.fillText(settings.name || "N² Scrims", 540, 165);
 
     ctx.font = "700 34px Arial";
-    ctx.fillStyle = "#a5f3fc";
+    ctx.fillStyle = "#d4d4d4";
     ctx.fillText(
       `${settings.season ? `Season ${settings.season} · ` : ""}Overall Standings`,
       540,
@@ -134,7 +134,7 @@ export default function ResultsGraphicsPage() {
     );
 
     ctx.font = "900 46px Arial";
-    ctx.fillStyle = "#facc15";
+    ctx.fillStyle = "#ffffff";
     ctx.fillText("TOURNAMENT RESULTS", 540, 340);
 
     const topTen = standings.slice(0, 10);
@@ -156,8 +156,8 @@ export default function ResultsGraphicsPage() {
     topTen.forEach((row, index) => {
       const y = 560 + index * 118;
 
-      const rowBackgrounds = ["#D4AF37", "#C0C0C0", "#CD7F32"];
-      const rowTextColors = ["#17130A", "#111827", "#1C1008"];
+      const rowBackgrounds = ["#ffffff", "#d4d4d4", "#737373"];
+      const rowTextColors = ["#000000", "#000000", "#ffffff"];
 
       ctx.fillStyle = rowBackgrounds[index] ?? "#0f172a";
       drawRoundedRectangle(ctx, 70, y, 940, 92, 18);
@@ -173,7 +173,7 @@ export default function ResultsGraphicsPage() {
       const logoY = y + 12;
       const logoSize = 68;
 
-      ctx.fillStyle = "#020617";
+      ctx.fillStyle = "#050505";
       drawRoundedRectangle(ctx, logoX, logoY, logoSize, logoSize, 14);
       ctx.fill();
 
@@ -234,7 +234,7 @@ export default function ResultsGraphicsPage() {
     <main className="min-h-screen bg-slate-950 px-4 py-5 text-white">
       <div className="mx-auto max-w-6xl">
         <header className="rounded-2xl border border-white/10 bg-slate-900 p-5">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-neutral-300">
             N² Scrims Admin
           </p>
 
@@ -251,7 +251,7 @@ export default function ResultsGraphicsPage() {
 
             <Link
               href="/admin/tournament"
-              className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-black"
+              className="rounded-lg bg-white text-black px-4 py-2.5 text-sm font-black"
             >
               Standings
             </Link>
@@ -276,16 +276,16 @@ export default function ResultsGraphicsPage() {
                   key={row.squadId}
                   className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
                     index === 0
-                      ? "border-yellow-300/60 bg-yellow-500 text-slate-950"
+                      ? "border-white bg-white text-black"
                       : index === 1
-                        ? "border-slate-200/60 bg-slate-300 text-slate-950"
+                        ? "border-neutral-300 bg-neutral-300 text-black"
                         : index === 2
-                          ? "border-orange-300/60 bg-orange-700 text-white"
+                          ? "border-neutral-500 bg-neutral-500 text-white"
                           : "border-white/10 bg-black/20 text-white"
                   }`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className={`w-8 shrink-0 font-black ${index < 3 ? "text-current" : "text-violet-400"}`}>
+                    <span className={`w-8 shrink-0 font-black ${index < 3 ? "text-current" : "text-neutral-300"}`}>
                       #{index + 1}
                     </span>
 
@@ -308,7 +308,7 @@ export default function ResultsGraphicsPage() {
                     </span>
                   </div>
 
-                  <span className={`font-black ${index < 3 ? "text-current" : "text-violet-400"}`}>
+                  <span className={`font-black ${index < 3 ? "text-current" : "text-neutral-300"}`}>
                     {row.totalPoints}
                   </span>
                 </div>
@@ -319,7 +319,7 @@ export default function ResultsGraphicsPage() {
               type="button"
               onClick={download}
               disabled={!ready}
-              className="mt-5 w-full rounded-lg bg-violet-600 px-5 py-3 font-black disabled:opacity-50"
+              className="mt-5 w-full rounded-lg bg-white text-black px-5 py-3 font-black disabled:opacity-50"
             >
               Download 1080 × 1920 PNG
             </button>
@@ -381,18 +381,14 @@ function drawPolynesianInspiredPattern(
   height: number,
 ) {
   ctx.save();
-  ctx.globalAlpha = 0.11;
-  ctx.strokeStyle = "#67e8f9";
-  ctx.fillStyle = "#2dd4bf";
+  ctx.globalAlpha = 0.10;
+  ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 5;
 
-  // Polynesian-inspired geometric border bands. These are original
-  // canvas motifs rather than copied traditional artwork.
   const bandWidth = 62;
   const step = 72;
 
   for (let y = 20; y < height; y += step) {
-    // Left repeating spear/chevron motif.
     ctx.beginPath();
     ctx.moveTo(12, y + 30);
     ctx.lineTo(12 + bandWidth / 2, y);
@@ -401,7 +397,6 @@ function drawPolynesianInspiredPattern(
     ctx.closePath();
     ctx.stroke();
 
-    // Right mirrored motif.
     const right = width - 12 - bandWidth;
     ctx.beginPath();
     ctx.moveTo(right, y + 30);
@@ -412,8 +407,7 @@ function drawPolynesianInspiredPattern(
     ctx.stroke();
   }
 
-  // Faint center triangles and stepped shapes behind the standings.
-  ctx.globalAlpha = 0.045;
+  ctx.globalAlpha = 0.035;
   ctx.lineWidth = 4;
   for (let y = 500; y < height - 160; y += 150) {
     for (let x = 150; x < width - 150; x += 130) {
@@ -428,7 +422,6 @@ function drawPolynesianInspiredPattern(
       ctx.stroke();
     }
   }
-
   ctx.restore();
 }
 
