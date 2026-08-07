@@ -221,16 +221,16 @@ export default function LiveOverlayPage() {
       `}</style>
 
       <div className="flex min-h-screen items-center justify-end px-6 py-4">
-        <aside className="overlay-enter flex h-[94vh] w-[min(32vw,520px)] min-w-[440px] flex-col overflow-hidden border border-cyan-400/40 bg-[#030712] shadow-[0_0_40px_rgba(0,174,255,0.28)]">
-          <div className="h-1 bg-gradient-to-r from-yellow-400 via-cyan-400 to-blue-700" />
+        <aside className="overlay-enter flex h-[94vh] w-[min(32vw,520px)] min-w-[440px] flex-col overflow-hidden border border-white/25 bg-transparent">
+          <div className="h-1 bg-gradient-to-r from-white via-neutral-400 to-white" />
 
-          <header className="relative overflow-hidden border-b border-white/10 px-6 py-5">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,174,255,0.18),transparent_45%)]" />
+          <header className="relative overflow-hidden border-b border-white/20 bg-black/90 px-6 py-5">
+            <div className="absolute inset-0 bg-transparent" />
 
             <div className="relative">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-cyan-400/30 bg-black/40 shadow-[0_0_18px_rgba(0,174,255,0.18)]">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-white bg-white">
                     {/* Place your logo at: public/n2-logo.png */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -254,11 +254,11 @@ export default function LiveOverlayPage() {
                   </div>
 
                   <div className="min-w-0">
-                    <p className="truncate text-[11px] font-black uppercase tracking-[0.28em] text-yellow-400">
+                    <p className="truncate text-[11px] font-black uppercase tracking-[0.28em] text-white">
                       {tournament.name}
                     </p>
 
-                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-neutral-400">
                       {[tournament.season, tournament.eventName]
                         .filter(Boolean)
                         .join(" • ")}
@@ -266,9 +266,9 @@ export default function LiveOverlayPage() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2 rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1.5">
-                  <span className="live-pulse h-2 w-2 rounded-full bg-red-400" />
-                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-red-300">
+                <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/40 bg-black/80 px-3 py-1.5">
+                  <span className="live-pulse h-2 w-2 rounded-full bg-white" />
+                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-white">
                     {liveMatch.status === "live" ? "Live" : liveMatch.status}
                   </span>
                 </div>
@@ -276,7 +276,7 @@ export default function LiveOverlayPage() {
 
               <div className="mt-5 flex items-end justify-between gap-4">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white">
                     Live Tournament
                   </p>
                   <h1 className="mt-1 text-4xl font-black uppercase italic leading-none">
@@ -285,10 +285,10 @@ export default function LiveOverlayPage() {
                 </div>
 
                 <div className="text-right">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
                     Match
                   </p>
-                  <p className="text-2xl font-black text-yellow-300">
+                  <p className="text-2xl font-black text-white">
                     {liveMatch.matchNumber}/{plannedMatches}
                   </p>
                 </div>
@@ -317,7 +317,7 @@ export default function LiveOverlayPage() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-hidden px-4 py-4">
-            <div className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-yellow-300">
+            <div className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
               <span />
               <span>Team</span>
@@ -327,7 +327,7 @@ export default function LiveOverlayPage() {
 
             <div className="mt-3 space-y-2">
               {visibleStandings.length === 0 ? (
-                <div className="border border-white/10 bg-white/5 p-8 text-center text-sm font-bold text-slate-400">
+                <div className="border border-white/20 bg-transparent p-8 text-center text-sm font-bold text-neutral-400">
                   Waiting for standings...
                 </div>
               ) : (
@@ -356,8 +356,8 @@ function InfoBox({
   value: string;
 }) {
   return (
-    <div className="border border-white/10 bg-white/5 px-3 py-3">
-      <p className="truncate text-[8px] font-black uppercase tracking-wider text-slate-500">
+    <div className="border border-white/20 bg-transparent px-3 py-3">
+      <p className="truncate text-[8px] font-black uppercase tracking-wider text-neutral-500">
         {label}
       </p>
       <p className="mt-0.5 truncate text-[13px] font-black uppercase text-white">
@@ -376,19 +376,19 @@ function StandingRow({
 }) {
   const rankStyle =
     rank === 1
-      ? "bg-yellow-400 text-black shadow-[0_0_18px_rgba(250,204,21,0.35)]"
+      ? "bg-white text-black shadow-[0_0_18px_rgba(250,204,21,0.35)]"
       : rank === 2
-        ? "bg-slate-200 text-black"
+        ? "bg-neutral-300 text-black"
         : rank === 3
-          ? "bg-amber-700 text-white"
-          : "bg-cyan-600/20 text-cyan-300";
+          ? "bg-neutral-600 text-white"
+          : "bg-white/10 text-white";
 
   return (
     <div
       className={`grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border px-3 py-3 ${
         rank === 1
-          ? "border-yellow-400/40 bg-yellow-400/10"
-          : "border-white/5 bg-[#0a1220]/95"
+          ? "border-white/25 bg-white/10"
+          : "border-white/5 bg-transparent"
       }`}
     >
       <div
@@ -397,7 +397,7 @@ function StandingRow({
         {rank}
       </div>
 
-      <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white/10 bg-black/30">
+      <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
         {standing.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -406,7 +406,7 @@ function StandingRow({
             className="h-full w-full object-contain p-1"
           />
         ) : (
-          <span className="text-[6px] font-black text-slate-600">
+          <span className="text-[6px] font-black text-black">
             LOGO
           </span>
         )}
@@ -416,11 +416,11 @@ function StandingRow({
         {standing.squadName}
       </p>
 
-      <p className="text-center text-base font-black text-slate-200">
+      <p className="text-center text-base font-black text-white">
         {standing.totalKills}
       </p>
 
-      <p className="text-center text-lg font-black text-yellow-300">
+      <p className="text-center text-lg font-black text-white">
         {standing.totalPoints}
       </p>
     </div>
