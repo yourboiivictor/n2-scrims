@@ -109,6 +109,7 @@ export default function TournamentSettingsPage() {
     defaultTournamentSettings,
   );
   const [newRule, setNewRule] = useState("");
+  const [eventName, setEventName] = useState("Event 1");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -138,10 +139,15 @@ export default function TournamentSettingsPage() {
           return;
         }
 
-        setSettings(
-          normalizeSettings(
-            snapshot.data() as Partial<TournamentSettings>,
-          ),
+        const data = snapshot.data() as Partial<TournamentSettings> & {
+          eventName?: string;
+        };
+
+        setSettings(normalizeSettings(data));
+        setEventName(
+          typeof data.eventName === "string" && data.eventName.trim()
+            ? data.eventName
+            : "Event 1",
         );
       },
       (error) => {
@@ -291,6 +297,7 @@ export default function TournamentSettingsPage() {
         doc(db, "settings", "tournament"),
         {
           ...cleanedSettings,
+          eventName: eventName.trim() || "Event 1",
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -409,6 +416,12 @@ export default function TournamentSettingsPage() {
               onChange={(value) =>
                 updateSetting("name", value)
               }
+            />
+            <Field
+              label="Event Name"
+              value={eventName}
+              onChange={setEventName}
+              placeholder="Event 1"
             />
             <Field
               label="Season"
