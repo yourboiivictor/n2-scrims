@@ -221,16 +221,16 @@ export default function LiveOverlayPage() {
       `}</style>
 
       <div className="flex min-h-screen items-center justify-end px-6 py-4">
-        <aside className="overlay-enter flex h-[94vh] w-[min(32vw,520px)] min-w-[440px] flex-col overflow-hidden border border-white/25 bg-transparent">
-          <div className="h-1 bg-gradient-to-r from-white via-neutral-400 to-white" />
+        <aside className="overlay-enter flex h-[94vh] w-[min(32vw,520px)] min-w-[440px] flex-col overflow-hidden border border-white/20 bg-transparent">
+          <div className="h-px bg-white/40" />
 
-          <header className="relative overflow-hidden border-b border-white/20 bg-black/90 px-6 py-5">
+          <header className="relative overflow-hidden border-b border-white/20 bg-transparent px-6 py-5">
             <div className="absolute inset-0 bg-transparent" />
 
             <div className="relative">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-white bg-white">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-transparent">
                     {/* Place your logo at: public/n2-logo.png */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -258,7 +258,7 @@ export default function LiveOverlayPage() {
                       {tournament.name}
                     </p>
 
-                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-neutral-400">
+                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-neutral-300">
                       {[tournament.season, tournament.eventName]
                         .filter(Boolean)
                         .join(" • ")}
@@ -266,7 +266,7 @@ export default function LiveOverlayPage() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/40 bg-black/80 px-3 py-1.5">
+                <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/30 bg-transparent px-3 py-1.5">
                   <span className="live-pulse h-2 w-2 rounded-full bg-white" />
                   <span className="text-[9px] font-black uppercase tracking-[0.18em] text-white">
                     {liveMatch.status === "live" ? "Live" : liveMatch.status}
@@ -285,7 +285,7 @@ export default function LiveOverlayPage() {
                 </div>
 
                 <div className="text-right">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
                     Match
                   </p>
                   <p className="text-2xl font-black text-white">
@@ -327,7 +327,7 @@ export default function LiveOverlayPage() {
 
             <div className="mt-3 space-y-2">
               {visibleStandings.length === 0 ? (
-                <div className="border border-white/20 bg-transparent p-8 text-center text-sm font-bold text-neutral-400">
+                <div className="border border-white/20 bg-transparent p-8 text-center text-sm font-bold text-neutral-300">
                   Waiting for standings...
                 </div>
               ) : (
@@ -357,7 +357,7 @@ function InfoBox({
 }) {
   return (
     <div className="border border-white/20 bg-transparent px-3 py-3">
-      <p className="truncate text-[8px] font-black uppercase tracking-wider text-neutral-500">
+      <p className="truncate text-[8px] font-black uppercase tracking-wider text-neutral-400">
         {label}
       </p>
       <p className="mt-0.5 truncate text-[13px] font-black uppercase text-white">
@@ -376,20 +376,16 @@ function StandingRow({
 }) {
   const rankStyle =
     rank === 1
-      ? "bg-white text-black shadow-[0_0_18px_rgba(250,204,21,0.35)]"
+      ? " text-black shadow-[0_0_18px_rgba(250,204,21,0.35)]"
       : rank === 2
-        ? "bg-neutral-300 text-black"
+        ? "bg-slate-200 text-black"
         : rank === 3
-          ? "bg-neutral-600 text-white"
-          : "bg-white/10 text-white";
+          ? " text-white"
+          : " text-white";
 
   return (
     <div
-      className={`grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border px-3 py-3 ${
-        rank === 1
-          ? "border-white/25 bg-white/10"
-          : "border-white/5 bg-transparent"
-      }`}
+      className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-transparent px-3 py-3"
     >
       <div
         className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
