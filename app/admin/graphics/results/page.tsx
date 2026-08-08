@@ -94,31 +94,15 @@ export default function ResultsGraphicsPage() {
     canvas.width = 1080;
     canvas.height = 1920;
 
-    const background = ctx.createLinearGradient(0, 0, 1080, 1920);
-    background.addColorStop(0, "#000000");
-    background.addColorStop(0.45, "#0a0a0a");
-    background.addColorStop(1, "#050505");
-    ctx.fillStyle = background;
+    ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const headerGradient = ctx.createLinearGradient(0, 0, 1080, 500);
-    headerGradient.addColorStop(0, "rgba(255, 255, 255, 0.16)");
-    headerGradient.addColorStop(0.55, "rgba(255, 255, 255, 0.08)");
-    headerGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = headerGradient;
-    ctx.fillRect(0, 0, 1080, 560);
+    const gradient = ctx.createLinearGradient(0, 0, 1080, 500);
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(1, "#0a0a0a");
 
-    drawPolynesianInspiredPattern(ctx, canvas.width, canvas.height);
-
-    try {
-      const n2Logo = await loadCanvasImage("/n2-logo.png");
-      ctx.save();
-      ctx.globalAlpha = 0.075;
-      drawImageContained(ctx, n2Logo, 170, 600, 740, 740);
-      ctx.restore();
-    } catch (error) {
-      console.warn("Unable to load N² watermark:", error);
-    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 1080, 500);
 
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
@@ -156,19 +140,12 @@ export default function ResultsGraphicsPage() {
     topTen.forEach((row, index) => {
       const y = 560 + index * 118;
 
-      const rowBackgrounds = ["#ffffff", "#d4d4d4", "#737373"];
-      const rowTextColors = ["#000000", "#000000", "#ffffff"];
-
-      if (index < 3) {
-        ctx.fillStyle = rowBackgrounds[index];
-      } else {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.055)";
-      }
+      ctx.fillStyle = index < 3 ? "#171717" : "#0a0a0a";
       drawRoundedRectangle(ctx, 70, y, 940, 92, 18);
       ctx.fill();
 
       ctx.textAlign = "left";
-      ctx.fillStyle = rowTextColors[index] ?? "#ffffff";
+      ctx.fillStyle = "#ffffff";
       ctx.font = "900 34px Arial";
       ctx.fillText(`#${index + 1}`, 100, y + 58);
 
@@ -195,12 +172,12 @@ export default function ResultsGraphicsPage() {
       }
 
       ctx.textAlign = "left";
-      ctx.fillStyle = rowTextColors[index] ?? "#ffffff";
+      ctx.fillStyle = "#ffffff";
       ctx.font = "900 30px Arial";
       ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
 
       ctx.textAlign = "right";
-      ctx.fillStyle = rowTextColors[index] ?? "#ffffff";
+      ctx.fillStyle = "#ffffff";
       ctx.font = "900 34px Arial";
       ctx.fillText(String(row.totalPoints), 940, y + 57);
     });
@@ -238,7 +215,7 @@ export default function ResultsGraphicsPage() {
     <main className="min-h-screen bg-black px-4 py-5 text-white">
       <div className="mx-auto max-w-6xl">
         <header className="rounded-2xl border border-white/10 bg-neutral-950 p-5">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-neutral-300">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-white">
             N² Scrims Admin
           </p>
 
@@ -278,18 +255,10 @@ export default function ResultsGraphicsPage() {
               {standings.slice(0, 10).map((row, index) => (
                 <div
                   key={row.squadId}
-                  className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
-                    index === 0
-                      ? "border-white bg-white text-black"
-                      : index === 1
-                        ? "border-neutral-300 bg-neutral-300 text-black"
-                        : index === 2
-                          ? "border-neutral-500 bg-neutral-500 text-white"
-                          : "border-white/15 bg-white/[0.05] text-white backdrop-blur-sm"
-                  }`}
+                  className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-4 py-3"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className={`w-8 shrink-0 font-black ${index < 3 ? "text-current" : "text-neutral-300"}`}>
+                    <span className="w-8 shrink-0 font-black text-white">
                       #{index + 1}
                     </span>
 
@@ -301,7 +270,7 @@ export default function ResultsGraphicsPage() {
                           className="h-full w-full object-contain"
                         />
                       ) : (
-                        <span className="text-sm font-black text-neutral-500">
+                        <span className="text-sm font-black text-black">
                           {row.squadName.trim().charAt(0).toUpperCase() || "?"}
                         </span>
                       )}
@@ -312,7 +281,7 @@ export default function ResultsGraphicsPage() {
                     </span>
                   </div>
 
-                  <span className={`font-black ${index < 3 ? "text-current" : "text-neutral-300"}`}>
+                  <span className="font-black text-white">
                     {row.totalPoints}
                   </span>
                 </div>
@@ -377,56 +346,6 @@ function drawImageContained(
   const drawY = y + (height - drawHeight) / 2;
 
   ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
-}
-
-function drawPolynesianInspiredPattern(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-) {
-  ctx.save();
-  ctx.globalAlpha = 0.10;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 5;
-
-  const bandWidth = 62;
-  const step = 72;
-
-  for (let y = 20; y < height; y += step) {
-    ctx.beginPath();
-    ctx.moveTo(12, y + 30);
-    ctx.lineTo(12 + bandWidth / 2, y);
-    ctx.lineTo(12 + bandWidth, y + 30);
-    ctx.lineTo(12 + bandWidth / 2, y + 60);
-    ctx.closePath();
-    ctx.stroke();
-
-    const right = width - 12 - bandWidth;
-    ctx.beginPath();
-    ctx.moveTo(right, y + 30);
-    ctx.lineTo(right + bandWidth / 2, y);
-    ctx.lineTo(right + bandWidth, y + 30);
-    ctx.lineTo(right + bandWidth / 2, y + 60);
-    ctx.closePath();
-    ctx.stroke();
-  }
-
-  ctx.globalAlpha = 0.035;
-  ctx.lineWidth = 4;
-  for (let y = 500; y < height - 160; y += 150) {
-    for (let x = 150; x < width - 150; x += 130) {
-      ctx.beginPath();
-      ctx.moveTo(x, y + 54);
-      ctx.lineTo(x + 32, y);
-      ctx.lineTo(x + 64, y + 54);
-      ctx.lineTo(x + 48, y + 54);
-      ctx.lineTo(x + 32, y + 28);
-      ctx.lineTo(x + 16, y + 54);
-      ctx.closePath();
-      ctx.stroke();
-    }
-  }
-  ctx.restore();
 }
 
 function drawRoundedRectangle(
