@@ -104,6 +104,9 @@ export default function ResultsGraphicsPage() {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 500);
 
+    // Subtle Polynesian-inspired geometric pattern behind the results.
+    drawPolynesianPattern(ctx, canvas.width, canvas.height);
+
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     ctx.font = "900 76px Arial";
@@ -212,7 +215,15 @@ export default function ResultsGraphicsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black px-4 py-5 text-white">
+    <main
+      className="min-h-screen bg-black px-4 py-5 text-white"
+      style={{
+        backgroundImage:
+          "linear-gradient(135deg, rgba(255,255,255,0.025) 25%, transparent 25%), linear-gradient(225deg, rgba(255,255,255,0.025) 25%, transparent 25%), linear-gradient(45deg, rgba(255,255,255,0.025) 25%, transparent 25%), linear-gradient(315deg, rgba(255,255,255,0.025) 25%, #000 25%)",
+        backgroundPosition: "24px 0, 24px 0, 0 0, 0 0",
+        backgroundSize: "48px 48px",
+      }}
+    >
       <div className="mx-auto max-w-6xl">
         <header className="rounded-2xl border border-white/10 bg-neutral-950 p-5">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-white">
@@ -317,6 +328,54 @@ export default function ResultsGraphicsPage() {
       </div>
     </main>
   );
+}
+
+
+function drawPolynesianPattern(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.055)";
+  ctx.lineWidth = 5;
+
+  const cell = 120;
+
+  for (let y = 500; y < height - 90; y += cell) {
+    for (let x = -cell; x < width + cell; x += cell) {
+      const offsetX = ((Math.floor(y / cell) % 2) * cell) / 2;
+      const cx = x + offsetX;
+      const cy = y;
+
+      // Repeating spear/chevron motif.
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 55);
+      ctx.lineTo(cx + 30, cy + 20);
+      ctx.lineTo(cx + 60, cy + 55);
+      ctx.lineTo(cx + 90, cy + 20);
+      ctx.lineTo(cx + 120, cy + 55);
+      ctx.stroke();
+
+      // Diamond motif.
+      ctx.beginPath();
+      ctx.moveTo(cx + 30, cy + 78);
+      ctx.lineTo(cx + 60, cy + 58);
+      ctx.lineTo(cx + 90, cy + 78);
+      ctx.lineTo(cx + 60, cy + 98);
+      ctx.closePath();
+      ctx.stroke();
+
+      // Small stepped marks.
+      ctx.beginPath();
+      ctx.moveTo(cx + 8, cy + 104);
+      ctx.lineTo(cx + 20, cy + 92);
+      ctx.lineTo(cx + 32, cy + 104);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
 }
 
 
