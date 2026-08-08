@@ -83,7 +83,9 @@ type HistoricalResult = {
   squadName: string;
   logoUrl: string;
   slot: number;
+  players: PlayerControl[];
   totalKills: number;
+  killPoints: number;
   placementPoints: number;
   totalPoints: number;
 };
@@ -931,7 +933,43 @@ return {};
                   ? data.logoUrl
                   : "",
               slot: Number(data.slot) || 0,
+              players: Array.isArray(data.players)
+                ? data.players.map(
+                    (player: unknown, playerIndex: number) => {
+                      const value =
+                        player && typeof player === "object"
+                          ? (player as Record<string, unknown>)
+                          : {};
+
+                      return {
+                        name:
+                          typeof value.name === "string"
+                            ? value.name
+                            : `Player ${playerIndex + 1}`,
+                        kills: Math.max(0, Number(value.kills) || 0),
+                        isAlive:
+                          typeof value.isAlive === "boolean"
+                            ? value.isAlive
+                            : false,
+                      };
+                    },
+                  )
+                : Array.from(
+                    { length: playersPerSquad },
+                    (_, playerIndex) => ({
+                      name:
+                        Array.isArray(data.playerNames) &&
+                        typeof data.playerNames[playerIndex] === "string"
+                          ? data.playerNames[playerIndex]
+                          : `Player ${playerIndex + 1}`,
+                      kills: 0,
+                      isAlive: false,
+                    }),
+                  ),
               totalKills: Number(data.totalKills) || 0,
+              killPoints:
+                Number(data.killPoints) ||
+                (Number(data.totalKills) || 0) * killPointValue,
               placementPoints:
                 Number(data.placementPoints) || 0,
               totalPoints: Number(data.totalPoints) || 0,
@@ -963,7 +1001,7 @@ return {};
         setIsLoadingPrevious(false);
       }
     },
-    [isAdmin, liveSettings.status],
+    [isAdmin, liveSettings.status, playersPerSquad, killPointValue],
   );
 
   const rebuildStandingsFromFinalizedResults = useCallback(
@@ -1079,20 +1117,57 @@ return {};
     [approvedSquads, liveSettings.matchNumber],
   );
 
-  const updatePreviousResult = (
+  const updatePreviousPlayerKills = (
     squadId: string,
-    field: "totalKills" | "placementPoints" | "totalPoints",
+    playerIndex: number,
     value: number,
   ) => {
     setPreviousResults((current) =>
-      current.map((result) =>
-        result.squadId === squadId
-          ? {
-              ...result,
-              [field]: Math.max(0, Number(value) || 0),
-            }
-          : result,
-      ),
+      current.map((result) => {
+        if (result.squadId !== squadId) return result;
+
+        const players = result.players.map((player, index) =>
+          index === playerIndex
+            ? {
+                ...player,
+                kills: Math.max(0, Number(value) || 0),
+              }
+            : player,
+        );
+
+        const totalKills = players.reduce(
+          (total, player) => total + player.kills,
+          0,
+        );
+        const killPoints = totalKills * killPointValue;
+
+        return {
+          ...result,
+          players,
+          totalKills,
+          killPoints,
+          totalPoints: killPoints + result.placementPoints,
+        };
+      }),
+    );
+  };
+
+  const updatePreviousPlacementPoints = (
+    squadId: string,
+    value: number,
+  ) => {
+    setPreviousResults((current) =>
+      current.map((result) => {
+        if (result.squadId !== squadId) return result;
+
+        const placementPoints = Math.max(0, Number(value) || 0);
+
+        return {
+          ...result,
+          placementPoints,
+          totalPoints: result.killPoints + placementPoints,
+        };
+      }),
     );
   };
 
@@ -1128,7 +1203,10 @@ return {};
             result.squadId,
           ),
           {
+            players: result.players,
+            playerNames: result.players.map((player) => player.name),
             totalKills: result.totalKills,
+            killPoints: result.killPoints,
             placementPoints: result.placementPoints,
             totalPoints: result.totalPoints,
             editedAt: serverTimestamp(),
@@ -1859,7 +1937,7 @@ return {};
                   Edit Previous Match Points
                 </h2>
                 <p className="mt-1 text-xs text-slate-400">
-                  Edit saved kills, placement points, or total points. Overall standings recalculate when you save.
+                  Edit each player's kills and placement points. Team kills, kill points, total points, and overall standings recalculate automatically when you save.
                 </p>
               </div>
 
@@ -1923,26 +2001,18 @@ return {};
               </div>
             ) : (
               <div className="mt-4 overflow-x-auto">
-                <div className="min-w-[760px]">
-                  <div className="grid grid-cols-[70px_minmax(220px,1fr)_130px_150px_150px] gap-2 border-b border-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    <span>Slot</span>
-                    <span>Squad</span>
-                    <span>Kills</span>
-                    <span>Place Pts</span>
-                    <span>Total Pts</span>
-                  </div>
-
+                <div className="min-w-[900px] space-y-3">
                   {previousResults.map((result) => (
                     <div
                       key={result.squadId}
-                      className="grid grid-cols-[70px_minmax(220px,1fr)_130px_150px_150px] items-center gap-2 border-b border-white/5 px-3 py-2"
+                      className="rounded-xl border border-white/10 bg-black/20 p-3"
                     >
-                      <span className="font-black">
-                        #{result.slot || "-"}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-md bg-violet-600 px-2 py-1 text-xs font-black">
+                          #{result.slot || "-"}
+                        </span>
 
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
                           {result.logoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -1956,52 +2026,70 @@ return {};
                             </span>
                           )}
                         </div>
-                        <span className="truncate font-black">
+
+                        <span className="font-black">
                           {result.squadName}
                         </span>
                       </div>
 
-                      <input
-                        type="number"
-                        min={0}
-                        value={result.totalKills}
-                        onChange={(event) =>
-                          updatePreviousResult(
-                            result.squadId,
-                            "totalKills",
-                            Number(event.target.value),
-                          )
-                        }
-                        className="h-9 rounded-lg border border-white/10 bg-slate-950 px-3 text-center font-black outline-none focus:border-violet-400"
-                      />
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {result.players.map((player, playerIndex) => (
+                          <label
+                            key={`${result.squadId}-history-${playerIndex}`}
+                            className="rounded-lg border border-white/10 bg-slate-950 p-2"
+                          >
+                            <span className="block truncate text-[10px] font-bold text-slate-400">
+                              {player.name}
+                            </span>
+                            <span className="mt-1 block text-[9px] font-bold uppercase text-slate-600">
+                              Kills
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={player.kills}
+                              onChange={(event) =>
+                                updatePreviousPlayerKills(
+                                  result.squadId,
+                                  playerIndex,
+                                  Number(event.target.value),
+                                )
+                              }
+                              className="mt-1 h-9 w-full rounded-md border border-white/10 bg-black px-2 text-center font-black outline-none focus:border-violet-400"
+                            />
+                          </label>
+                        ))}
+                      </div>
 
-                      <input
-                        type="number"
-                        min={0}
-                        value={result.placementPoints}
-                        onChange={(event) =>
-                          updatePreviousResult(
-                            result.squadId,
-                            "placementPoints",
-                            Number(event.target.value),
-                          )
-                        }
-                        className="h-9 rounded-lg border border-white/10 bg-slate-950 px-3 text-center font-black outline-none focus:border-violet-400"
-                      />
-
-                      <input
-                        type="number"
-                        min={0}
-                        value={result.totalPoints}
-                        onChange={(event) =>
-                          updatePreviousResult(
-                            result.squadId,
-                            "totalPoints",
-                            Number(event.target.value),
-                          )
-                        }
-                        className="h-9 rounded-lg border border-white/10 bg-slate-950 px-3 text-center font-black outline-none focus:border-violet-400"
-                      />
+                      <div className="mt-3 grid grid-cols-4 gap-2">
+                        <div className="rounded-lg border border-white/10 bg-slate-950 p-2 text-center">
+                          <p className="text-[9px] font-bold uppercase text-slate-500">Team Kills</p>
+                          <p className="mt-1 text-lg font-black">{result.totalKills}</p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-slate-950 p-2 text-center">
+                          <p className="text-[9px] font-bold uppercase text-slate-500">Kill Pts</p>
+                          <p className="mt-1 text-lg font-black">{result.killPoints}</p>
+                        </div>
+                        <label className="rounded-lg border border-white/10 bg-slate-950 p-2 text-center">
+                          <span className="block text-[9px] font-bold uppercase text-slate-500">Place Pts</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={result.placementPoints}
+                            onChange={(event) =>
+                              updatePreviousPlacementPoints(
+                                result.squadId,
+                                Number(event.target.value),
+                              )
+                            }
+                            className="mt-1 h-8 w-full rounded-md border border-white/10 bg-black px-2 text-center font-black outline-none focus:border-violet-400"
+                          />
+                        </label>
+                        <div className="rounded-lg border border-violet-400/30 bg-violet-400/10 p-2 text-center">
+                          <p className="text-[9px] font-bold uppercase text-violet-300">Total Pts</p>
+                          <p className="mt-1 text-lg font-black text-violet-300">{result.totalPoints}</p>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
