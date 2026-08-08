@@ -224,13 +224,13 @@ export default function LiveOverlayPage() {
         <aside className="overlay-enter flex h-[94vh] w-[min(32vw,520px)] min-w-[440px] flex-col overflow-hidden border border-white/20 bg-transparent">
           <div className="h-px bg-white/40" />
 
-          <header className="relative overflow-hidden border-b border-white/20 bg-transparent px-6 py-5">
+          <header className="relative overflow-hidden border-b border-white bg-white px-6 py-5 text-black">
             <div className="absolute inset-0 bg-transparent" />
 
             <div className="relative">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-transparent">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-black/20 bg-transparent">
                     {/* Place your logo at: public/n2-logo.png */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -248,17 +248,17 @@ export default function LiveOverlayPage() {
                       }}
                     />
 
-                    <span className="hidden h-full w-full items-center justify-center text-xl font-black italic text-white">
+                    <span className="hidden h-full w-full items-center justify-center text-xl font-black italic text-black">
                       N²
                     </span>
                   </div>
 
                   <div className="min-w-0">
-                    <p className="truncate text-[11px] font-black uppercase tracking-[0.28em] text-white">
+                    <p className="truncate text-[11px] font-black uppercase tracking-[0.28em] text-black">
                       {tournament.name}
                     </p>
 
-                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-neutral-300">
+                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-neutral-700">
                       {[tournament.season, tournament.eventName]
                         .filter(Boolean)
                         .join(" • ")}
@@ -266,9 +266,9 @@ export default function LiveOverlayPage() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/30 bg-transparent px-3 py-1.5">
-                  <span className="live-pulse h-2 w-2 rounded-full bg-white" />
-                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-white">
+                <div className="flex shrink-0 items-center gap-2 rounded-full border border-black/30 bg-transparent px-3 py-1.5">
+                  <span className="live-pulse h-2 w-2 rounded-full bg-black" />
+                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-black">
                     {liveMatch.status === "live" ? "Live" : liveMatch.status}
                   </span>
                 </div>
@@ -276,7 +276,7 @@ export default function LiveOverlayPage() {
 
               <div className="mt-5 flex items-end justify-between gap-4">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-black">
                     Live Tournament
                   </p>
                   <h1 className="mt-1 text-4xl font-black uppercase italic leading-none">
@@ -285,10 +285,10 @@ export default function LiveOverlayPage() {
                 </div>
 
                 <div className="text-right">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
                     Match
                   </p>
-                  <p className="text-2xl font-black text-white">
+                  <p className="text-2xl font-black text-black">
                     {liveMatch.matchNumber}/{plannedMatches}
                   </p>
                 </div>
