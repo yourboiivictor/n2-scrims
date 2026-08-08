@@ -97,30 +97,41 @@ export default function ResultsGraphicsPage() {
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    try {
-      const background = await loadCanvasImage("/poly.png");
-      drawImageCover(ctx, background, 0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "rgba(0,0,0,0.34)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } catch (error) {
-      console.warn("Unable to load Polynesian background:", error);
-    }
-
     const gradient = ctx.createLinearGradient(0, 0, 1080, 500);
-    gradient.addColorStop(0, "rgba(0,0,0,0.20)");
-    gradient.addColorStop(1, "rgba(0,0,0,0.72)");
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(1, "#0a0a0a");
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 500);
 
+    try {
+      const background = await loadCanvasImage("/poly.png");
+      drawImageCover(ctx, background, 0, 500, canvas.width, canvas.height - 500);
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      ctx.fillRect(0, 500, canvas.width, canvas.height - 500);
+    } catch (error) {
+      console.warn("Unable to load Polynesian background:", error);
+    }
+
 
     ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 10;
+    ctx.lineJoin = "round";
     ctx.textAlign = "center";
     ctx.font = "900 76px Arial";
+    ctx.strokeText(settings.name || "N² Scrims", 540, 165);
     ctx.fillText(settings.name || "N² Scrims", 540, 165);
 
     ctx.font = "700 34px Arial";
-    ctx.fillStyle = "#d4d4d4";
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 7;
+    ctx.strokeText(
+      `${settings.season ? `Season ${settings.season} · ` : ""}Overall Standings`,
+      540,
+      225,
+    );
     ctx.fillText(
       `${settings.season ? `Season ${settings.season} · ` : ""}Overall Standings`,
       540,
@@ -129,6 +140,9 @@ export default function ResultsGraphicsPage() {
 
     ctx.font = "900 46px Arial";
     ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 8;
+    ctx.strokeText("TOURNAMENT RESULTS", 540, 340);
     ctx.fillText("TOURNAMENT RESULTS", 540, 340);
 
     const topTen = standings.slice(0, 10);
