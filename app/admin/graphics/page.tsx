@@ -94,12 +94,12 @@ export default function ResultsGraphicsPage() {
     canvas.width = 1080;
     canvas.height = 1920;
 
-    ctx.fillStyle = "#020617";
+    ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const gradient = ctx.createLinearGradient(0, 0, 1080, 500);
-    gradient.addColorStop(0, "#7c3aed");
-    gradient.addColorStop(1, "#111827");
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(1, "#0a0a0a");
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 500);
@@ -110,7 +110,7 @@ export default function ResultsGraphicsPage() {
     ctx.fillText(settings.name || "N² Scrims", 540, 165);
 
     ctx.font = "700 34px Arial";
-    ctx.fillStyle = "#ddd6fe";
+    ctx.fillStyle = "#d4d4d4";
     ctx.fillText(
       `${settings.season ? `Season ${settings.season} · ` : ""}Overall Standings`,
       540,
@@ -118,7 +118,7 @@ export default function ResultsGraphicsPage() {
     );
 
     ctx.font = "900 46px Arial";
-    ctx.fillStyle = "#facc15";
+    ctx.fillStyle = "#ffffff";
     ctx.fillText("TOURNAMENT RESULTS", 540, 340);
 
     const topTen = standings.slice(0, 10);
@@ -140,12 +140,12 @@ export default function ResultsGraphicsPage() {
     topTen.forEach((row, index) => {
       const y = 560 + index * 118;
 
-      ctx.fillStyle = index < 3 ? "#1e1b4b" : "#0f172a";
+      ctx.fillStyle = index < 3 ? "#171717" : "#0a0a0a";
       drawRoundedRectangle(ctx, 70, y, 940, 92, 18);
       ctx.fill();
 
       ctx.textAlign = "left";
-      ctx.fillStyle = "#a78bfa";
+      ctx.fillStyle = "#ffffff";
       ctx.font = "900 34px Arial";
       ctx.fillText(`#${index + 1}`, 100, y + 58);
 
@@ -154,7 +154,7 @@ export default function ResultsGraphicsPage() {
       const logoY = y + 12;
       const logoSize = 68;
 
-      ctx.fillStyle = "#020617";
+      ctx.fillStyle = "#ffffff";
       drawRoundedRectangle(ctx, logoX, logoY, logoSize, logoSize, 14);
       ctx.fill();
 
@@ -162,7 +162,7 @@ export default function ResultsGraphicsPage() {
         drawImageContained(ctx, logo, logoX + 5, logoY + 5, logoSize - 10, logoSize - 10);
       } else {
         ctx.textAlign = "center";
-        ctx.fillStyle = "#64748b";
+        ctx.fillStyle = "#000000";
         ctx.font = "900 24px Arial";
         ctx.fillText(
           row.squadName.trim().charAt(0).toUpperCase() || "?",
@@ -177,13 +177,13 @@ export default function ResultsGraphicsPage() {
       ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
 
       ctx.textAlign = "right";
-      ctx.fillStyle = "#facc15";
+      ctx.fillStyle = "#ffffff";
       ctx.font = "900 34px Arial";
       ctx.fillText(String(row.totalPoints), 940, y + 57);
     });
 
     ctx.textAlign = "center";
-    ctx.fillStyle = "#94a3b8";
+    ctx.fillStyle = "#a3a3a3";
     ctx.font = "700 24px Arial";
     ctx.fillText("N² SCRIMS", 540, 1810);
 
@@ -212,10 +212,10 @@ export default function ResultsGraphicsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-5 text-white">
+    <main className="min-h-screen bg-black px-4 py-5 text-white">
       <div className="mx-auto max-w-6xl">
-        <header className="rounded-2xl border border-white/10 bg-slate-900 p-5">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
+        <header className="rounded-2xl border border-white/10 bg-neutral-950 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-white">
             N² Scrims Admin
           </p>
 
@@ -225,28 +225,28 @@ export default function ResultsGraphicsPage() {
                 Results Graphics
               </h1>
 
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-neutral-400">
                 Generate a 1080 × 1920 tournament-results image.
               </p>
             </div>
 
             <Link
               href="/admin/tournament"
-              className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-black"
+              className="rounded-lg bg-white text-black px-4 py-2.5 text-sm font-black"
             >
               Standings
             </Link>
           </div>
 
           {message && (
-            <div className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+            <div className="mt-4 rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-sm text-white">
               {message}
             </div>
           )}
         </header>
 
         <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_420px]">
-          <div className="rounded-2xl border border-white/10 bg-slate-900 p-5">
+          <div className="rounded-2xl border border-white/10 bg-neutral-950 p-5">
             <h2 className="text-xl font-black">
               Top 10 Preview
             </h2>
@@ -258,11 +258,11 @@ export default function ResultsGraphicsPage() {
                   className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-4 py-3"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="w-8 shrink-0 font-black text-violet-400">
+                    <span className="w-8 shrink-0 font-black text-white">
                       #{index + 1}
                     </span>
 
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-slate-950 p-1">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white bg-white p-1">
                       {squadLogos[row.squadId] ? (
                         <img
                           src={squadLogos[row.squadId]}
@@ -270,7 +270,7 @@ export default function ResultsGraphicsPage() {
                           className="h-full w-full object-contain"
                         />
                       ) : (
-                        <span className="text-sm font-black text-slate-500">
+                        <span className="text-sm font-black text-black">
                           {row.squadName.trim().charAt(0).toUpperCase() || "?"}
                         </span>
                       )}
@@ -281,7 +281,7 @@ export default function ResultsGraphicsPage() {
                     </span>
                   </div>
 
-                  <span className="font-black text-violet-400">
+                  <span className="font-black text-white">
                     {row.totalPoints}
                   </span>
                 </div>
@@ -292,13 +292,13 @@ export default function ResultsGraphicsPage() {
               type="button"
               onClick={download}
               disabled={!ready}
-              className="mt-5 w-full rounded-lg bg-violet-600 px-5 py-3 font-black disabled:opacity-50"
+              className="mt-5 w-full rounded-lg bg-white text-black px-5 py-3 font-black disabled:opacity-50"
             >
               Download 1080 × 1920 PNG
             </button>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+          <div className="rounded-2xl border border-white/10 bg-neutral-950 p-4">
             <canvas
               ref={canvasRef}
               className="h-auto w-full rounded-xl border border-white/10"
