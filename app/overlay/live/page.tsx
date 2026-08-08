@@ -60,7 +60,7 @@ export default function StreamStandingsOverlay() {
   }, [standings]);
 
   return (
-    <main className="min-h-screen bg-black/40 p-3 text-white">
+    <main className="min-h-screen bg-black/70 p-3 text-white">
       <section className="w-[460px] overflow-hidden rounded-2xl border border-white/15 bg-slate-950/95 shadow-2xl backdrop-blur">
         <header className="flex items-center justify-between border-b border-white/10 bg-violet-600 px-4 py-3">
           <div>
