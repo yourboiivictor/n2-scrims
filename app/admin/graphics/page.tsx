@@ -104,16 +104,33 @@ export default function ResultsGraphicsPage() {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 500);
 
-    // Subtle Polynesian-inspired geometric pattern behind the results.
-    drawPolynesianPattern(ctx, canvas.width, canvas.height);
+    try {
+      const background = await loadCanvasImage("/poly.png");
+      drawImageCover(ctx, background, 0, 500, canvas.width, canvas.height - 500);
+      ctx.fillStyle = "rgba(0,0,0,0.38)";
+      ctx.fillRect(0, 500, canvas.width, canvas.height - 500);
+    } catch (error) {
+      console.warn("Unable to load Polynesian background:", error);
+    }
 
     ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#000000";
+    ctx.lineJoin = "round";
     ctx.textAlign = "center";
     ctx.font = "900 76px Arial";
+    ctx.lineWidth = 11;
+    ctx.strokeText(settings.name || "N² Scrims", 540, 165);
     ctx.fillText(settings.name || "N² Scrims", 540, 165);
 
     ctx.font = "700 34px Arial";
-    ctx.fillStyle = "#d4d4d4";
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 7;
+    ctx.strokeText(
+      `${settings.season ? `Season ${settings.season} · ` : ""}Overall Standings`,
+      540,
+      225,
+    );
     ctx.fillText(
       `${settings.season ? `Season ${settings.season} · ` : ""}Overall Standings`,
       540,
@@ -122,6 +139,9 @@ export default function ResultsGraphicsPage() {
 
     ctx.font = "900 46px Arial";
     ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 9;
+    ctx.strokeText("TOURNAMENT RESULTS", 540, 340);
     ctx.fillText("TOURNAMENT RESULTS", 540, 340);
 
     const topTen = standings.slice(0, 10);
@@ -219,9 +239,10 @@ export default function ResultsGraphicsPage() {
       className="min-h-screen bg-black px-4 py-5 text-white"
       style={{
         backgroundImage:
-          "linear-gradient(135deg, rgba(255,255,255,0.025) 25%, transparent 25%), linear-gradient(225deg, rgba(255,255,255,0.025) 25%, transparent 25%), linear-gradient(45deg, rgba(255,255,255,0.025) 25%, transparent 25%), linear-gradient(315deg, rgba(255,255,255,0.025) 25%, #000 25%)",
-        backgroundPosition: "24px 0, 24px 0, 0 0, 0 0",
-        backgroundSize: "48px 48px",
+          "linear-gradient(rgba(0,0,0,0.62), rgba(0,0,0,0.62)), url('/poly.png')",
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+        backgroundAttachment: "fixed",
       }}
     >
       <div className="mx-auto max-w-6xl">
@@ -331,54 +352,6 @@ export default function ResultsGraphicsPage() {
 }
 
 
-function drawPolynesianPattern(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,0.055)";
-  ctx.lineWidth = 5;
-
-  const cell = 120;
-
-  for (let y = 500; y < height - 90; y += cell) {
-    for (let x = -cell; x < width + cell; x += cell) {
-      const offsetX = ((Math.floor(y / cell) % 2) * cell) / 2;
-      const cx = x + offsetX;
-      const cy = y;
-
-      // Repeating spear/chevron motif.
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + 55);
-      ctx.lineTo(cx + 30, cy + 20);
-      ctx.lineTo(cx + 60, cy + 55);
-      ctx.lineTo(cx + 90, cy + 20);
-      ctx.lineTo(cx + 120, cy + 55);
-      ctx.stroke();
-
-      // Diamond motif.
-      ctx.beginPath();
-      ctx.moveTo(cx + 30, cy + 78);
-      ctx.lineTo(cx + 60, cy + 58);
-      ctx.lineTo(cx + 90, cy + 78);
-      ctx.lineTo(cx + 60, cy + 98);
-      ctx.closePath();
-      ctx.stroke();
-
-      // Small stepped marks.
-      ctx.beginPath();
-      ctx.moveTo(cx + 8, cy + 104);
-      ctx.lineTo(cx + 20, cy + 92);
-      ctx.lineTo(cx + 32, cy + 104);
-      ctx.stroke();
-    }
-  }
-
-  ctx.restore();
-}
-
-
 function loadCanvasImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -388,6 +361,23 @@ function loadCanvasImage(src: string) {
     image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
     image.src = src;
   });
+}
+
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 }
 
 function drawImageContained(
