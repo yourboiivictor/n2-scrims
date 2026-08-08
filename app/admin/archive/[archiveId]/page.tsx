@@ -392,7 +392,7 @@ export default function ArchiveDetailsPage() {
                     href={`/admin/archive/${archiveId}/matches/${match.id}`}
                     className="mt-4 block rounded-lg bg-violet-600 px-4 py-2.5 text-center text-sm font-black"
                   >
-                    View Results
+                    View / Edit Results
                   </Link>
                 </article>
               ))}

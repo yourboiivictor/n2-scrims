@@ -344,3 +344,120 @@ export async function archiveAndResetTournament({
   await resetBatch.commit();
   return archiveRef.id;
 }
+
+
+export async function rebuildArchivedStandings(archiveId: string) {
+  const matchesSnapshot = await getDocs(
+    collection(db, "tournamentArchives", archiveId, "matches"),
+  );
+
+  const totals: Record<string, StandingTotals> = {};
+
+  for (const matchDocument of matchesSnapshot.docs) {
+    const resultsSnapshot = await getDocs(
+      collection(
+        db,
+        "tournamentArchives",
+        archiveId,
+        "matches",
+        matchDocument.id,
+        "results",
+      ),
+    );
+
+    resultsSnapshot.forEach((resultDocument) => {
+      const data = resultDocument.data() as ActiveResult;
+      const squadId =
+        typeof data.squadId === "string"
+          ? data.squadId
+          : resultDocument.id;
+
+      if (!totals[squadId]) {
+        totals[squadId] = {
+          squadId,
+          squadName: data.squadName || "Unnamed Squad",
+          logoUrl: data.logoUrl || "",
+          slot: Number(data.slot) || 0,
+          playerNames: Array.isArray(data.playerNames)
+            ? data.playerNames
+            : [],
+          matchesPlayed: 0,
+          chickenDinners: 0,
+          totalKills: 0,
+          placementPoints: 0,
+          totalPoints: 0,
+        };
+      }
+
+      const standing = totals[squadId];
+      standing.squadName = data.squadName || standing.squadName;
+      standing.logoUrl = data.logoUrl || standing.logoUrl;
+      standing.slot = Number(data.slot) || standing.slot;
+      standing.playerNames = Array.isArray(data.playerNames)
+        ? data.playerNames
+        : standing.playerNames;
+      standing.matchesPlayed += 1;
+      standing.chickenDinners += Number(data.placement) === 1 ? 1 : 0;
+      standing.totalKills += Number(data.totalKills) || 0;
+      standing.placementPoints += Number(data.placementPoints) || 0;
+      standing.totalPoints += Number(data.totalPoints) || 0;
+    });
+  }
+
+  const rankedStandings = Object.values(totals).sort((a, b) => {
+    if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+    if (b.chickenDinners !== a.chickenDinners) {
+      return b.chickenDinners - a.chickenDinners;
+    }
+    if (b.totalKills !== a.totalKills) return b.totalKills - a.totalKills;
+    return a.squadName.localeCompare(b.squadName);
+  });
+
+  const existingStandings = await getDocs(
+    collection(db, "tournamentArchives", archiveId, "standings"),
+  );
+
+  const operations: Array<
+    (batch: ReturnType<typeof writeBatch>) => void
+  > = [];
+
+  existingStandings.docs.forEach((standingDocument) => {
+    operations.push((batch) => batch.delete(standingDocument.ref));
+  });
+
+  rankedStandings.forEach((standing, index) => {
+    operations.push((batch) => {
+      batch.set(
+        doc(
+          db,
+          "tournamentArchives",
+          archiveId,
+          "standings",
+          standing.squadId,
+        ),
+        {
+          ...standing,
+          rank: index + 1,
+          updatedAt: serverTimestamp(),
+        },
+      );
+    });
+  });
+
+  await commitInChunks(operations);
+
+  const champion = rankedStandings[0] || null;
+
+  await setDoc(
+    doc(db, "tournamentArchives", archiveId),
+    {
+      championName: champion?.squadName || "No champion",
+      championLogoUrl: champion?.logoUrl || "",
+      squadCount: rankedStandings.length,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  return rankedStandings;
+}
