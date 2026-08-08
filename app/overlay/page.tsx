@@ -376,7 +376,7 @@ function StandingRow({
 }) {
   const rankStyle =
     rank === 1
-      ? " text-black shadow-[0_0_18px_rgba(250,204,21,0.35)]"
+      ? "bg-yellow-400 text-yellow-950 shadow-[0_0_18px_rgba(250,204,21,0.55)]"
       : rank === 2
         ? "bg-slate-200 text-black"
         : rank === 3
