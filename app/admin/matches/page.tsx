@@ -3,6 +3,7 @@
 import {
   collection,
   collectionGroup,
+  deleteDoc,
   doc,
   getDocs,
   getDoc,
@@ -219,6 +220,7 @@ export default function AdminMatchesPage() {
   const [isStarting, setIsStarting] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isPreparingNext, setIsPreparingNext] = useState(false);
+  const [isResettingTournament, setIsResettingTournament] = useState(false);
   const [savingSquadId, setSavingSquadId] = useState<
     string | null
   >(null);
@@ -862,6 +864,121 @@ return {};
     }
   };
 
+  const resetTournament = async () => {
+    if (!isAdmin || isResettingTournament) return;
+
+    const firstConfirmation = window.confirm(
+      "STOP THE TOURNAMENT AND RESET ALL POINTS?\n\nThis will stop the live match, reset standings to zero, and erase saved match results for this tournament. This cannot be undone.",
+    );
+
+    if (!firstConfirmation) return;
+
+    const typedConfirmation = window.prompt(
+      'Type RESET to permanently clear tournament points and match results.',
+    );
+
+    if (typedConfirmation?.trim().toUpperCase() !== "RESET") {
+      setMessage("Tournament reset cancelled.");
+      return;
+    }
+
+    setIsResettingTournament(true);
+    setMessage("Stopping tournament and resetting points...");
+
+    try {
+      Object.values(saveTimers.current).forEach((timer) =>
+        clearTimeout(timer),
+      );
+      saveTimers.current = {};
+
+      // Delete all public standings so every squad returns to zero.
+      const standingsSnapshot = await getDocs(collection(db, "standings"));
+      await Promise.all(
+        standingsSnapshot.docs.map((standingDocument) =>
+          deleteDoc(doc(db, "standings", standingDocument.id)),
+        ),
+      );
+
+      // Delete live-match squads and live-match parent documents.
+      const liveMatchesSnapshot = await getDocs(collection(db, "liveMatches"));
+      for (const liveMatchDocument of liveMatchesSnapshot.docs) {
+        const liveSquadsSnapshot = await getDocs(
+          collection(db, "liveMatches", liveMatchDocument.id, "squads"),
+        );
+
+        await Promise.all(
+          liveSquadsSnapshot.docs.map((squadDocument) =>
+            deleteDoc(
+              doc(
+                db,
+                "liveMatches",
+                liveMatchDocument.id,
+                "squads",
+                squadDocument.id,
+              ),
+            ),
+          ),
+        );
+
+        await deleteDoc(doc(db, "liveMatches", liveMatchDocument.id));
+      }
+
+      // Delete finalized match results too. loadFinalizedTotals() reads these,
+      // so keeping them would bring old points back after a reset.
+      const matchesSnapshot = await getDocs(collection(db, "matches"));
+      for (const matchDocument of matchesSnapshot.docs) {
+        const resultsSnapshot = await getDocs(
+          collection(db, "matches", matchDocument.id, "results"),
+        );
+
+        await Promise.all(
+          resultsSnapshot.docs.map((resultDocument) =>
+            deleteDoc(
+              doc(
+                db,
+                "matches",
+                matchDocument.id,
+                "results",
+                resultDocument.id,
+              ),
+            ),
+          ),
+        );
+
+        await deleteDoc(doc(db, "matches", matchDocument.id));
+      }
+
+      await setDoc(
+        doc(db, "settings", "liveMatch"),
+        {
+          matchNumber: 1,
+          status: "not-started",
+          map: matchSchedule[0]?.map || tournamentSettings.maps?.[0] || "",
+          startTime: matchSchedule[0]?.startTime || "",
+          aliveSquads: 0,
+          alivePlayers: 0,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      setLiveSquads({});
+      setFinalizedTotals({});
+      setSavingSquadId(null);
+
+      setMessage(
+        "Tournament stopped. All match results and standings points were reset. Match 1 is ready to start again.",
+      );
+    } catch (error) {
+      console.error("Unable to reset tournament:", error);
+      setMessage(
+        "Reset failed. Some tournament data may still remain. Check Firestore before starting another match.",
+      );
+    } finally {
+      setIsResettingTournament(false);
+    }
+  };
+
   const prepareNextMatch = async () => {
     if (!isAdmin || liveSettings.status !== "finalized") {
       return;
@@ -1338,6 +1455,18 @@ return {};
                       : "Prepare Next Match"}
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => void resetTournament()}
+                disabled={isResettingTournament}
+                className="rounded-lg border border-red-500/50 bg-red-950 px-5 py-2.5 text-sm font-black text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Stops the tournament and permanently resets standings and saved match results."
+              >
+                {isResettingTournament
+                  ? "Resetting..."
+                  : "⛔ Stop & Reset Tournament"}
+              </button>
 
               <button
                 type="button"
