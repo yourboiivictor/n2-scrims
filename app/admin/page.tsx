@@ -846,22 +846,22 @@ export default function AdminPage() {
               />
               <AdminButton
                 href="/overlay/champion"
-                title="Champion Card"
-                description="Open the compact tournament champion display"
+                title="Most Points"
+                description="Show the squad with the most tournament points"
                 icon="🏆"
                 openInNewTab
               />
               <AdminButton
                 href="/overlay/kill-leader"
-                title="Kill Leader"
-                description="Show the current tournament kill leader"
+                title="Top Kills"
+                description="Show the squad with the most tournament kills"
                 icon="🔥"
                 openInNewTab
               />
               <AdminButton
                 href="/overlay/top5"
-                title="Top 5"
-                description="Open the top-five tournament standings display"
+                title="Top Chicken Dinners"
+                description="Show the top 5 squads ranked by chicken dinners"
                 icon="⭐"
                 openInNewTab
               />
