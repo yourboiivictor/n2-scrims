@@ -306,23 +306,31 @@ export default function ResultsOverlayPage() {
       `}</style>
 
       <div className="results-enter mx-auto grid h-full max-w-[1900px] grid-rows-[auto_minmax(0,1fr)]">
-        <header className="relative overflow-hidden border border-black/20 bg-white px-6 py-4 shadow-[0_0_45px_rgba(0,0,0,0.08)]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,0,0,0.08),transparent_40%)]" />
-          <div className="absolute bottom-0 left-0 h-1 w-full bg-black" />
+        <header
+          className="relative overflow-hidden border border-black/20 bg-black px-6 py-4 shadow-[0_0_45px_rgba(0,0,0,0.08)]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(0,0,0,0.38), rgba(0,0,0,0.38)), url('/poly.png')",
+            backgroundPosition: "center",
+            backgroundSize: "cover",
+          }}
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_40%)]" />
+          <div className="absolute bottom-0 left-0 h-1 w-full bg-white" />
 
           <div className="relative flex items-end justify-between gap-8">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.34em] text-black">
+              <p className="text-xs font-black uppercase tracking-[0.34em] text-white">
                 {tournament.name}
               </p>
 
-              <p className="mt-2 text-sm font-bold uppercase tracking-[0.18em] text-neutral-600">
+              <p className="mt-2 text-sm font-bold uppercase tracking-[0.18em] text-neutral-300">
                 {[tournament.season, tournament.eventName]
                   .filter(Boolean)
                   .join(" • ")}
               </p>
 
-              <h1 className="mt-3 text-[clamp(2.35rem,3.1vw,4.5rem)] font-black uppercase italic leading-none">
+              <h1 className="mt-3 text-[clamp(2.35rem,3.1vw,4.5rem)] font-black uppercase italic leading-none text-white">
                 Match {liveMatch.matchNumber} Results
               </h1>
             </div>
@@ -469,11 +477,11 @@ function HeaderStat({
   value: string;
 }) {
   return (
-    <div className="min-w-[100px] border border-black/10 bg-white/30 px-4 py-3 text-right">
-      <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
+    <div className="min-w-[100px] border border-white/20 bg-black/35 px-4 py-3 text-right">
+      <p className="text-[8px] font-black uppercase tracking-wider text-neutral-300">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-black uppercase text-black">
+      <p className="mt-1 truncate text-sm font-black uppercase text-white">
         {value}
       </p>
     </div>
