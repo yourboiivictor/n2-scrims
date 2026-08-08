@@ -97,12 +97,22 @@ export default function ResultsGraphicsPage() {
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    try {
+      const background = await loadCanvasImage("/poly.png");
+      drawImageCover(ctx, background, 0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } catch (error) {
+      console.warn("Unable to load Polynesian background:", error);
+    }
+
     const gradient = ctx.createLinearGradient(0, 0, 1080, 500);
-    gradient.addColorStop(0, "#ffffff");
-    gradient.addColorStop(1, "#0a0a0a");
+    gradient.addColorStop(0, "rgba(0,0,0,0.20)");
+    gradient.addColorStop(1, "rgba(0,0,0,0.72)");
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 500);
+
 
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
@@ -162,7 +172,7 @@ export default function ResultsGraphicsPage() {
         drawImageContained(ctx, logo, logoX + 5, logoY + 5, logoSize - 10, logoSize - 10);
       } else {
         ctx.textAlign = "center";
-        ctx.fillStyle = "#737373";
+        ctx.fillStyle = "#000000";
         ctx.font = "900 24px Arial";
         ctx.fillText(
           row.squadName.trim().charAt(0).toUpperCase() || "?",
@@ -212,7 +222,16 @@ export default function ResultsGraphicsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black px-4 py-5 text-white">
+    <main
+      className="min-h-screen bg-black px-4 py-5 text-white"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(0,0,0,0.48), rgba(0,0,0,0.48)), url('/poly.png')",
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+        backgroundAttachment: "fixed",
+      }}
+    >
       <div className="mx-auto max-w-6xl">
         <header className="rounded-2xl border border-white/10 bg-neutral-950 p-5">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-white">
@@ -320,6 +339,54 @@ export default function ResultsGraphicsPage() {
 }
 
 
+function drawPolynesianPattern(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.055)";
+  ctx.lineWidth = 5;
+
+  const cell = 120;
+
+  for (let y = 500; y < height - 90; y += cell) {
+    for (let x = -cell; x < width + cell; x += cell) {
+      const offsetX = ((Math.floor(y / cell) % 2) * cell) / 2;
+      const cx = x + offsetX;
+      const cy = y;
+
+      // Repeating spear/chevron motif.
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 55);
+      ctx.lineTo(cx + 30, cy + 20);
+      ctx.lineTo(cx + 60, cy + 55);
+      ctx.lineTo(cx + 90, cy + 20);
+      ctx.lineTo(cx + 120, cy + 55);
+      ctx.stroke();
+
+      // Diamond motif.
+      ctx.beginPath();
+      ctx.moveTo(cx + 30, cy + 78);
+      ctx.lineTo(cx + 60, cy + 58);
+      ctx.lineTo(cx + 90, cy + 78);
+      ctx.lineTo(cx + 60, cy + 98);
+      ctx.closePath();
+      ctx.stroke();
+
+      // Small stepped marks.
+      ctx.beginPath();
+      ctx.moveTo(cx + 8, cy + 104);
+      ctx.lineTo(cx + 20, cy + 92);
+      ctx.lineTo(cx + 32, cy + 104);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+
 function loadCanvasImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -329,6 +396,23 @@ function loadCanvasImage(src: string) {
     image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
     image.src = src;
   });
+}
+
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 }
 
 function drawImageContained(
