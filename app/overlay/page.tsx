@@ -316,7 +316,7 @@ export default function LiveOverlayPage() {
             </div>
           </header>
 
-          <section className="min-h-0 flex-1 overflow-hidden px-4 py-4">
+          <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
             <div className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
               <span />
@@ -327,7 +327,7 @@ export default function LiveOverlayPage() {
 
             <div className="mt-3 space-y-2">
               {visibleStandings.length === 0 ? (
-                <div className="border border-white/20 bg-transparent p-8 text-center text-sm font-bold text-neutral-300">
+                <div className="border border-white/20 bg-black/20 p-8 text-center text-sm font-bold text-neutral-300">
                   Waiting for standings...
                 </div>
               ) : (
@@ -356,11 +356,11 @@ function InfoBox({
   value: string;
 }) {
   return (
-    <div className="border border-white/20 bg-transparent px-3 py-3">
-      <p className="truncate text-[8px] font-black uppercase tracking-wider text-neutral-400">
+    <div className="border border-black/20 bg-white px-3 py-3">
+      <p className="truncate text-[8px] font-black uppercase tracking-wider text-neutral-600">
         {label}
       </p>
-      <p className="mt-0.5 truncate text-[13px] font-black uppercase text-white">
+      <p className="mt-0.5 truncate text-[13px] font-black uppercase text-black">
         {value}
       </p>
     </div>
@@ -385,7 +385,7 @@ function StandingRow({
 
   return (
     <div
-      className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-transparent px-3 py-3"
+      className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
     >
       <div
         className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
