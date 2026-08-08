@@ -78,6 +78,17 @@ type FinalizedTotals = {
   totalPoints: number;
 };
 
+type HistoricalResult = {
+  squadId: string;
+  squadName: string;
+  logoUrl: string;
+  slot: number;
+  totalKills: number;
+  placementPoints: number;
+  totalPoints: number;
+};
+
+
 type LiveMatchSettings = {
   matchNumber: number;
   status: "not-started" | "live" | "finalized";
@@ -221,6 +232,11 @@ export default function AdminMatchesPage() {
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isPreparingNext, setIsPreparingNext] = useState(false);
   const [isResettingTournament, setIsResettingTournament] = useState(false);
+  const [showPreviousMatches, setShowPreviousMatches] = useState(false);
+  const [previousMatchNumber, setPreviousMatchNumber] = useState(1);
+  const [previousResults, setPreviousResults] = useState<HistoricalResult[]>([]);
+  const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
+  const [isSavingPrevious, setIsSavingPrevious] = useState(false);
   const [savingSquadId, setSavingSquadId] = useState<
     string | null
   >(null);
@@ -273,6 +289,15 @@ export default function AdminMatchesPage() {
   );
   const isLastPlannedMatch =
     liveSettings.matchNumber >= plannedMatches;
+
+  const editableMatchNumbers = useMemo(
+    () =>
+      Array.from(
+        { length: Math.max(1, liveSettings.matchNumber) },
+        (_, index) => index + 1,
+      ),
+    [liveSettings.matchNumber],
+  );
 
   const liveSquadList = useMemo(
     () =>
@@ -861,6 +886,268 @@ return {};
       setMessage("Unable to finalize match.");
     } finally {
       setIsFinalizing(false);
+    }
+  };
+
+  const loadPreviousMatch = useCallback(
+    async (matchNumber: number) => {
+      if (!isAdmin) return;
+
+      if (liveSettings.status === "live") {
+        setMessage(
+          "Finalize or stop the live match before editing previous match points.",
+        );
+        return;
+      }
+
+      setIsLoadingPrevious(true);
+      setMessage("");
+
+      try {
+        const snapshot = await getDocs(
+          collection(
+            db,
+            "matches",
+            `match-${matchNumber}`,
+            "results",
+          ),
+        );
+
+        const loaded = snapshot.docs
+          .map((resultDocument) => {
+            const data = resultDocument.data();
+
+            return {
+              squadId:
+                typeof data.squadId === "string"
+                  ? data.squadId
+                  : resultDocument.id,
+              squadName:
+                typeof data.squadName === "string"
+                  ? data.squadName
+                  : "Unnamed Squad",
+              logoUrl:
+                typeof data.logoUrl === "string"
+                  ? data.logoUrl
+                  : "",
+              slot: Number(data.slot) || 0,
+              totalKills: Number(data.totalKills) || 0,
+              placementPoints:
+                Number(data.placementPoints) || 0,
+              totalPoints: Number(data.totalPoints) || 0,
+            } satisfies HistoricalResult;
+          })
+          .sort((a, b) => {
+            if (b.totalPoints !== a.totalPoints) {
+              return b.totalPoints - a.totalPoints;
+            }
+
+            if (b.totalKills !== a.totalKills) {
+              return b.totalKills - a.totalKills;
+            }
+
+            return a.squadName.localeCompare(b.squadName);
+          });
+
+        setPreviousResults(loaded);
+
+        if (loaded.length === 0) {
+          setMessage(
+            `No finalized results were found for Match ${matchNumber}.`,
+          );
+        }
+      } catch (error) {
+        console.error("Unable to load previous match:", error);
+        setMessage("Unable to load previous match results.");
+      } finally {
+        setIsLoadingPrevious(false);
+      }
+    },
+    [isAdmin, liveSettings.status],
+  );
+
+  const rebuildStandingsFromFinalizedResults = useCallback(
+    async () => {
+      const snapshot = await getDocs(collectionGroup(db, "results"));
+
+      const totals: Record<
+        string,
+        FinalizedTotals & {
+          squadName: string;
+          logoUrl: string;
+          slot: number;
+          playerNames: string[];
+        }
+      > = {};
+
+      snapshot.forEach((resultDocument) => {
+        const data = resultDocument.data();
+        const squadId =
+          typeof data.squadId === "string"
+            ? data.squadId
+            : resultDocument.id;
+
+        if (!totals[squadId]) {
+          totals[squadId] = {
+            totalKills: 0,
+            placementPoints: 0,
+            totalPoints: 0,
+            squadName:
+              typeof data.squadName === "string"
+                ? data.squadName
+                : "Unnamed Squad",
+            logoUrl:
+              typeof data.logoUrl === "string"
+                ? data.logoUrl
+                : "",
+            slot: Number(data.slot) || 0,
+            playerNames: Array.isArray(data.playerNames)
+              ? data.playerNames.filter(
+                  (name: unknown): name is string =>
+                    typeof name === "string",
+                )
+              : [],
+          };
+        }
+
+        totals[squadId].totalKills +=
+          Number(data.totalKills) || 0;
+        totals[squadId].placementPoints +=
+          Number(data.placementPoints) || 0;
+        totals[squadId].totalPoints +=
+          Number(data.totalPoints) || 0;
+      });
+
+      const batch = writeBatch(db);
+
+      approvedSquads.forEach((squad, index) => {
+        const total = totals[squad.id] || {
+          totalKills: 0,
+          placementPoints: 0,
+          totalPoints: 0,
+          squadName: squad.squadName,
+          logoUrl: squad.logoUrl || "",
+          slot:
+            typeof squad.slot === "number"
+              ? squad.slot
+              : index + 1,
+          playerNames: Array.isArray(squad.players)
+            ? squad.players.map((player, playerIndex) =>
+                getPlayerName(player, playerIndex),
+              )
+            : [],
+        };
+
+        batch.set(
+          doc(db, "standings", squad.id),
+          {
+            squadId: squad.id,
+            squadName: total.squadName,
+            logoUrl: total.logoUrl,
+            slot: total.slot,
+            playerNames: total.playerNames,
+            currentMatchNumber: liveSettings.matchNumber,
+            currentMatchKills: 0,
+            currentMatchPlacementPoints: 0,
+            currentMatchPoints: 0,
+            totalKills: total.totalKills,
+            placementPoints: total.placementPoints,
+            totalPoints: total.totalPoints,
+            alivePlayers: 0,
+            isEliminated: false,
+            isLive: false,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+
+      await batch.commit();
+
+      const refreshedTotals: Record<string, FinalizedTotals> = {};
+
+      Object.entries(totals).forEach(([squadId, total]) => {
+        refreshedTotals[squadId] = {
+          totalKills: total.totalKills,
+          placementPoints: total.placementPoints,
+          totalPoints: total.totalPoints,
+        };
+      });
+
+      setFinalizedTotals(refreshedTotals);
+    },
+    [approvedSquads, liveSettings.matchNumber],
+  );
+
+  const updatePreviousResult = (
+    squadId: string,
+    field: "totalKills" | "placementPoints" | "totalPoints",
+    value: number,
+  ) => {
+    setPreviousResults((current) =>
+      current.map((result) =>
+        result.squadId === squadId
+          ? {
+              ...result,
+              [field]: Math.max(0, Number(value) || 0),
+            }
+          : result,
+      ),
+    );
+  };
+
+  const savePreviousMatch = async () => {
+    if (!isAdmin || previousResults.length === 0) return;
+
+    if (liveSettings.status === "live") {
+      setMessage(
+        "Finalize or stop the live match before editing previous match points.",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Save edited points for Match ${previousMatchNumber}? Tournament standings will be recalculated automatically.`,
+    );
+
+    if (!confirmed) return;
+
+    setIsSavingPrevious(true);
+    setMessage("");
+
+    try {
+      const batch = writeBatch(db);
+
+      previousResults.forEach((result) => {
+        batch.set(
+          doc(
+            db,
+            "matches",
+            `match-${previousMatchNumber}`,
+            "results",
+            result.squadId,
+          ),
+          {
+            totalKills: result.totalKills,
+            placementPoints: result.placementPoints,
+            totalPoints: result.totalPoints,
+            editedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+
+      await batch.commit();
+      await rebuildStandingsFromFinalizedResults();
+
+      setMessage(
+        `Match ${previousMatchNumber} updated. Overall standings were recalculated.`,
+      );
+    } catch (error) {
+      console.error("Unable to save previous match:", error);
+      setMessage("Unable to save previous match edits.");
+    } finally {
+      setIsSavingPrevious(false);
     }
   };
 
@@ -1458,6 +1745,37 @@ return {};
 
               <button
                 type="button"
+                onClick={() => {
+                  const nextOpen = !showPreviousMatches;
+                  setShowPreviousMatches(nextOpen);
+
+                  if (nextOpen) {
+                    setPreviousMatchNumber(
+                      Math.max(
+                        1,
+                        liveSettings.status === "finalized"
+                          ? liveSettings.matchNumber
+                          : liveSettings.matchNumber - 1,
+                      ),
+                    );
+                    void loadPreviousMatch(
+                      Math.max(
+                        1,
+                        liveSettings.status === "finalized"
+                          ? liveSettings.matchNumber
+                          : liveSettings.matchNumber - 1,
+                      ),
+                    );
+                  }
+                }}
+                disabled={liveSettings.status === "live"}
+                className="rounded-lg border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ✏️ Edit Previous Matches
+              </button>
+
+              <button
+                type="button"
                 onClick={() => void resetTournament()}
                 disabled={isResettingTournament}
                 className="rounded-lg border border-red-500/50 bg-red-950 px-5 py-2.5 text-sm font-black text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1529,6 +1847,168 @@ return {};
             </div>
           )}
         </header>
+
+        {showPreviousMatches && (
+          <section className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
+                  Historical Scoring
+                </p>
+                <h2 className="mt-1 text-2xl font-black">
+                  Edit Previous Match Points
+                </h2>
+                <p className="mt-1 text-xs text-slate-400">
+                  Edit saved kills, placement points, or total points. Overall standings recalculate when you save.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-2">
+                <label>
+                  <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
+                    Match
+                  </span>
+                  <select
+                    value={previousMatchNumber}
+                    onChange={(event) => {
+                      const nextMatch = Number(event.target.value);
+                      setPreviousMatchNumber(nextMatch);
+                      void loadPreviousMatch(nextMatch);
+                    }}
+                    className="h-10 rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-black outline-none focus:border-violet-400"
+                  >
+                    {editableMatchNumbers.map((number) => (
+                      <option key={number} value={number}>
+                        Match {number}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void loadPreviousMatch(previousMatchNumber)
+                  }
+                  disabled={isLoadingPrevious}
+                  className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black disabled:opacity-50"
+                >
+                  {isLoadingPrevious ? "Loading..." : "Reload"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void savePreviousMatch()}
+                  disabled={
+                    isSavingPrevious ||
+                    isLoadingPrevious ||
+                    previousResults.length === 0
+                  }
+                  className="h-10 rounded-lg bg-violet-600 px-5 text-sm font-black disabled:opacity-50"
+                >
+                  {isSavingPrevious
+                    ? "Saving..."
+                    : "Save Match Changes"}
+                </button>
+              </div>
+            </div>
+
+            {isLoadingPrevious ? (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-5 text-center text-sm text-slate-400">
+                Loading Match {previousMatchNumber}...
+              </div>
+            ) : previousResults.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-5 text-center text-sm text-slate-400">
+                No saved results for Match {previousMatchNumber}.
+              </div>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <div className="min-w-[760px]">
+                  <div className="grid grid-cols-[70px_minmax(220px,1fr)_130px_150px_150px] gap-2 border-b border-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <span>Slot</span>
+                    <span>Squad</span>
+                    <span>Kills</span>
+                    <span>Place Pts</span>
+                    <span>Total Pts</span>
+                  </div>
+
+                  {previousResults.map((result) => (
+                    <div
+                      key={result.squadId}
+                      className="grid grid-cols-[70px_minmax(220px,1fr)_130px_150px_150px] items-center gap-2 border-b border-white/5 px-3 py-2"
+                    >
+                      <span className="font-black">
+                        #{result.slot || "-"}
+                      </span>
+
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
+                          {result.logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={result.logoUrl}
+                              alt=""
+                              className="h-full w-full object-contain p-1"
+                            />
+                          ) : (
+                            <span className="text-[7px] text-slate-500">
+                              LOGO
+                            </span>
+                          )}
+                        </div>
+                        <span className="truncate font-black">
+                          {result.squadName}
+                        </span>
+                      </div>
+
+                      <input
+                        type="number"
+                        min={0}
+                        value={result.totalKills}
+                        onChange={(event) =>
+                          updatePreviousResult(
+                            result.squadId,
+                            "totalKills",
+                            Number(event.target.value),
+                          )
+                        }
+                        className="h-9 rounded-lg border border-white/10 bg-slate-950 px-3 text-center font-black outline-none focus:border-violet-400"
+                      />
+
+                      <input
+                        type="number"
+                        min={0}
+                        value={result.placementPoints}
+                        onChange={(event) =>
+                          updatePreviousResult(
+                            result.squadId,
+                            "placementPoints",
+                            Number(event.target.value),
+                          )
+                        }
+                        className="h-9 rounded-lg border border-white/10 bg-slate-950 px-3 text-center font-black outline-none focus:border-violet-400"
+                      />
+
+                      <input
+                        type="number"
+                        min={0}
+                        value={result.totalPoints}
+                        onChange={(event) =>
+                          updatePreviousResult(
+                            result.squadId,
+                            "totalPoints",
+                            Number(event.target.value),
+                          )
+                        }
+                        className="h-9 rounded-lg border border-white/10 bg-slate-950 px-3 text-center font-black outline-none focus:border-violet-400"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {squadsLoading ? (
           <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-6 text-sm">
