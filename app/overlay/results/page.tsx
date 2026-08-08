@@ -272,7 +272,7 @@ export default function ResultsOverlayPage() {
   );
 
   return (
-    <main className="h-screen overflow-hidden bg-[#02050b] p-3 text-white">
+    <main className="h-screen overflow-hidden bg-black p-3 text-white">
       <style jsx global>{`
         @keyframes results-enter {
           from {
@@ -306,17 +306,17 @@ export default function ResultsOverlayPage() {
       `}</style>
 
       <div className="results-enter mx-auto grid h-full max-w-[1900px] grid-rows-[auto_minmax(0,1fr)]">
-        <header className="relative overflow-hidden border border-cyan-400/20 bg-[#07101d] px-6 py-4 shadow-[0_0_65px_rgba(0,174,255,0.16)]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,174,255,0.22),transparent_40%)]" />
-          <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-yellow-400 via-cyan-400 to-blue-700" />
+        <header className="relative overflow-hidden border border-white/20 bg-neutral-950 px-6 py-4 shadow-[0_0_45px_rgba(255,255,255,0.08)]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_40%)]" />
+          <div className="absolute bottom-0 left-0 h-1 w-full bg-white" />
 
           <div className="relative flex items-end justify-between gap-8">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.34em] text-yellow-400">
+              <p className="text-xs font-black uppercase tracking-[0.34em] text-white">
                 {tournament.name}
               </p>
 
-              <p className="mt-2 text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
+              <p className="mt-2 text-sm font-bold uppercase tracking-[0.18em] text-neutral-400">
                 {[tournament.season, tournament.eventName]
                   .filter(Boolean)
                   .join(" • ")}
@@ -353,16 +353,16 @@ export default function ResultsOverlayPage() {
 
         <section className="mt-3 grid min-h-0 grid-cols-[minmax(0,0.95fr)_minmax(560px,1.05fr)] gap-3">
           <div className="grid min-h-0 grid-rows-[minmax(0,1.22fr)_minmax(0,0.78fr)] gap-3">
-            <section className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-4">
+            <section className="min-h-0 overflow-hidden border border-white/10 bg-neutral-950 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-300">
+                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-white">
                     Match Podium
                   </p>
                   <h2 className="mt-1 text-2xl font-black uppercase italic">
                     Top 3 Teams
                   </h2>
-                  <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-slate-500">
+                  <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-neutral-500">
                     Final placement • kills • points
                   </p>
                 </div>
@@ -372,7 +372,7 @@ export default function ResultsOverlayPage() {
 
               <div className="mt-3 grid min-h-0 grid-cols-3 gap-3">
                 {podium.length === 0 ? (
-                  <div className="col-span-3 border border-white/10 bg-white/5 p-8 text-center text-base font-bold text-slate-400">
+                  <div className="col-span-3 border border-white/10 bg-white/5 p-8 text-center text-base font-bold text-neutral-400">
                     Results will appear when the match is finalized.
                   </div>
                 ) : (
@@ -423,15 +423,15 @@ export default function ResultsOverlayPage() {
 
           </div>
 
-          <aside className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-300">
+          <aside className="min-h-0 overflow-hidden border border-white/10 bg-neutral-950 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-white">
               Overall Tournament
             </p>
             <h2 className="mt-1 text-2xl font-black uppercase italic">
               Top 10 Standings
             </h2>
 
-            <div className="mt-5 grid grid-cols-[42px_42px_minmax(0,1fr)_58px_64px] gap-2 border-b border-white/10 px-2 pb-2 text-[8px] font-black uppercase tracking-[0.14em] text-yellow-300">
+            <div className="mt-5 grid grid-cols-[42px_42px_minmax(0,1fr)_58px_64px] gap-2 border-b border-white/10 px-2 pb-2 text-[8px] font-black uppercase tracking-[0.14em] text-white">
               <span>Rank</span>
               <span />
               <span>Team</span>
@@ -441,7 +441,7 @@ export default function ResultsOverlayPage() {
 
             <div className="mt-2 space-y-1.5">
               {topTen.length === 0 ? (
-                <div className="border border-white/10 bg-white/5 p-10 text-center font-bold text-slate-400">
+                <div className="border border-white/10 bg-white/5 p-10 text-center font-bold text-neutral-400">
                   Waiting for standings...
                 </div>
               ) : (
@@ -470,10 +470,10 @@ function HeaderStat({
 }) {
   return (
     <div className="min-w-[100px] border border-white/10 bg-black/20 px-4 py-3 text-right">
-      <p className="text-[8px] font-black uppercase tracking-wider text-slate-500">
+      <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-black uppercase text-cyan-300">
+      <p className="mt-1 truncate text-sm font-black uppercase text-white">
         {value}
       </p>
     </div>
@@ -491,17 +491,17 @@ function PodiumCard({
 }) {
   const style =
     rank === 1
-      ? "border-yellow-400/45 bg-yellow-400/10 shadow-[0_0_30px_rgba(250,204,21,0.12)]"
+      ? "border-white/45 bg-white/10 shadow-[0_0_30px_rgba(255,255,255,0.10)]"
       : rank === 2
-        ? "border-slate-300/30 bg-slate-300/5"
-        : "border-amber-700/30 bg-amber-700/5";
+        ? "border-neutral-300/30 bg-neutral-300/5"
+        : "border-neutral-500/30 bg-neutral-500/5";
 
   return (
     <article
       className={`podium-rise border p-3 text-center ${style}`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden border border-white/10 bg-black/30">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden border border-white bg-white">
         {result.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -510,13 +510,13 @@ function PodiumCard({
             className="h-full w-full object-contain p-2"
           />
         ) : (
-          <span className="text-[9px] font-black text-slate-600">
+          <span className="text-[9px] font-black text-black">
             LOGO
           </span>
         )}
       </div>
 
-      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">
         #{rank}
       </p>
 
@@ -526,7 +526,7 @@ function PodiumCard({
 
       <div className="mt-2 grid grid-cols-2 gap-2">
         <div className="bg-black/25 p-2">
-          <p className="text-[8px] font-black uppercase text-slate-500">
+          <p className="text-[8px] font-black uppercase text-neutral-500">
             Kills
           </p>
           <p className="mt-1 text-2xl font-black">
@@ -535,10 +535,10 @@ function PodiumCard({
         </div>
 
         <div className="bg-black/25 p-2">
-          <p className="text-[8px] font-black uppercase text-slate-500">
+          <p className="text-[8px] font-black uppercase text-neutral-500">
             Points
           </p>
-          <p className="mt-1 text-2xl font-black text-yellow-300">
+          <p className="mt-1 text-2xl font-black text-white">
             {result.totalPoints}
           </p>
         </div>
@@ -561,12 +561,12 @@ function HighlightCard({
   logoUrl?: string;
 }) {
   return (
-    <article className="min-h-0 overflow-hidden border border-white/10 bg-[#07101d] p-4">
+    <article className="min-h-0 overflow-hidden border border-white/10 bg-neutral-950 p-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-3xl">{icon}</span>
 
         {logoUrl && (
-          <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white/10 bg-black/30">
+          <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={logoUrl}
@@ -577,13 +577,13 @@ function HighlightCard({
         )}
       </div>
 
-      <p className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300">
+      <p className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-white">
         {title}
       </p>
       <p className="mt-1 truncate text-2xl font-black uppercase">
         {primary}
       </p>
-      <p className="mt-2 truncate text-sm font-black uppercase text-yellow-300">
+      <p className="mt-2 truncate text-sm font-black uppercase text-white">
         {secondary}
       </p>
     </article>
@@ -599,19 +599,19 @@ function StandingRow({
 }) {
   const rankStyle =
     rank === 1
-      ? "bg-yellow-400 text-black"
+      ? "bg-white text-black"
       : rank === 2
-        ? "bg-slate-200 text-black"
+        ? "bg-neutral-300 text-black"
         : rank === 3
-          ? "bg-amber-700 text-white"
-          : "bg-cyan-600/20 text-cyan-300";
+          ? "bg-neutral-600 text-white"
+          : "bg-cyan-600/20 text-white";
 
   return (
     <div
       className={`grid grid-cols-[42px_42px_minmax(0,1fr)_58px_64px] items-center gap-2 border px-2 py-1.5 ${
         rank === 1
-          ? "border-yellow-400/35 bg-yellow-400/10"
-          : "border-white/5 bg-[#0a1220]"
+          ? "border-white/35 bg-white/10"
+          : "border-white/5 bg-neutral-950"
       }`}
     >
       <div
@@ -620,7 +620,7 @@ function StandingRow({
         {rank}
       </div>
 
-      <div className="flex h-8 w-8 items-center justify-center overflow-hidden border border-white/10 bg-black/30">
+      <div className="flex h-8 w-8 items-center justify-center overflow-hidden border border-white bg-white">
         {standing.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -629,7 +629,7 @@ function StandingRow({
             className="h-full w-full object-contain p-1"
           />
         ) : (
-          <span className="text-[6px] font-black text-slate-600">
+          <span className="text-[6px] font-black text-black">
             LOGO
           </span>
         )}
@@ -643,7 +643,7 @@ function StandingRow({
         {standing.totalKills}
       </p>
 
-      <p className="text-center text-base font-black text-yellow-300">
+      <p className="text-center text-base font-black text-white">
         {standing.totalPoints}
       </p>
     </div>
