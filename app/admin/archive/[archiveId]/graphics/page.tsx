@@ -36,9 +36,6 @@ export default function ArchiveGraphicsPage() {
   const [title, setTitle] = useState("Tournament Archive");
   const [season, setSeason] = useState("");
   const [standings, setStandings] = useState<ArchivedStanding[]>([]);
-  const [logos, setLogos] = useState<Record<string, HTMLImageElement | null>>(
-    {},
-  );
   const [message, setMessage] = useState("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 

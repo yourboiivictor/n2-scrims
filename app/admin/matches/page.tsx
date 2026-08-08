@@ -1937,7 +1937,7 @@ return {};
                   Edit Previous Match Points
                 </h2>
                 <p className="mt-1 text-xs text-slate-400">
-                  Edit each player's kills and placement points. Team kills, kill points, total points, and overall standings recalculate automatically when you save.
+                  Edit each player&apos;s kills and placement points. Team kills, kill points, total points, and overall standings recalculate automatically when you save.
                 </p>
               </div>
 
