@@ -361,10 +361,10 @@ export default function ResultsOverlayPage() {
 
         <section className="mt-3 grid min-h-0 grid-cols-[minmax(0,0.95fr)_minmax(560px,1.05fr)] gap-3">
           <div className="grid min-h-0 grid-rows-[minmax(0,1.22fr)_minmax(0,0.78fr)] gap-3">
-            <section className="min-h-0 overflow-hidden border border-black/10 bg-neutral-950 p-4">
+            <section className="min-h-0 overflow-hidden border border-black/15 bg-white p-4 text-black">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-black">
+                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-neutral-700">
                     Match Podium
                   </p>
                   <h2 className="mt-1 text-2xl font-black uppercase italic">
@@ -380,7 +380,7 @@ export default function ResultsOverlayPage() {
 
               <div className="mt-3 grid min-h-0 grid-cols-3 gap-3">
                 {podium.length === 0 ? (
-                  <div className="col-span-3 border border-black/10 bg-black/5 p-8 text-center text-base font-bold text-neutral-600">
+                  <div className="col-span-3 border border-black/10 bg-neutral-100 p-8 text-center text-base font-bold text-neutral-600">
                     Results will appear when the match is finalized.
                   </div>
                 ) : (
@@ -431,8 +431,8 @@ export default function ResultsOverlayPage() {
 
           </div>
 
-          <aside className="min-h-0 overflow-hidden border border-black/10 bg-neutral-950 p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-black">
+          <aside className="min-h-0 overflow-hidden border border-black/15 bg-white p-4 text-black">
+            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-neutral-700">
               Overall Tournament
             </p>
             <h2 className="mt-1 text-2xl font-black uppercase italic">
@@ -449,7 +449,7 @@ export default function ResultsOverlayPage() {
 
             <div className="mt-2 space-y-1.5">
               {topTen.length === 0 ? (
-                <div className="border border-black/10 bg-black/5 p-10 text-center font-bold text-neutral-600">
+                <div className="border border-black/10 bg-neutral-100 p-10 text-center font-bold text-neutral-600">
                   Waiting for standings...
                 </div>
               ) : (
@@ -499,10 +499,10 @@ function PodiumCard({
 }) {
   const style =
     rank === 1
-      ? "border-black/45 bg-black/10 shadow-[0_0_30px_rgba(0,0,0,0.10)]"
+      ? "border-black/35 bg-neutral-100 shadow-[0_0_24px_rgba(0,0,0,0.08)]"
       : rank === 2
-        ? "border-neutral-700/30 bg-neutral-700/5"
-        : "border-neutral-500/30 bg-neutral-500/5";
+        ? "border-neutral-400/40 bg-neutral-50"
+        : "border-neutral-500/35 bg-neutral-100";
 
   return (
     <article
@@ -533,7 +533,7 @@ function PodiumCard({
       </h3>
 
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <div className="bg-white/40 p-2">
+        <div className="bg-neutral-100 p-2">
           <p className="text-[8px] font-black uppercase text-neutral-500">
             Kills
           </p>
@@ -542,7 +542,7 @@ function PodiumCard({
           </p>
         </div>
 
-        <div className="bg-white/40 p-2">
+        <div className="bg-neutral-100 p-2">
           <p className="text-[8px] font-black uppercase text-neutral-500">
             Points
           </p>
@@ -569,7 +569,7 @@ function HighlightCard({
   logoUrl?: string;
 }) {
   return (
-    <article className="min-h-0 overflow-hidden border border-black/10 bg-neutral-950 p-4">
+    <article className="min-h-0 overflow-hidden border border-black/15 bg-white p-4 text-black">
       <div className="flex items-center justify-between gap-3">
         <span className="text-3xl">{icon}</span>
 
@@ -585,7 +585,7 @@ function HighlightCard({
         )}
       </div>
 
-      <p className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-black">
+      <p className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-neutral-700">
         {title}
       </p>
       <p className="mt-1 truncate text-2xl font-black uppercase">
@@ -612,14 +612,14 @@ function StandingRow({
         ? "bg-neutral-300 text-black"
         : rank === 3
           ? "bg-neutral-600 text-white"
-          : "bg-black/10 text-black";
+          : "bg-neutral-200 text-black";
 
   return (
     <div
       className={`grid grid-cols-[42px_42px_minmax(0,1fr)_58px_64px] items-center gap-2 border px-2 py-1.5 ${
         rank === 1
-          ? "border-black/35 bg-black/10"
-          : "border-black/5 bg-white"
+          ? "border-black/25 bg-neutral-100"
+          : "border-black/10 bg-white"
       }`}
     >
       <div
