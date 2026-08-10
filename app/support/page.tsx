@@ -1,7 +1,7 @@
 "use client";
 
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
 
 type TierId = "supporter" | "elite" | "vip";
 
@@ -52,6 +52,22 @@ const TIERS: Tier[] = [
 ];
 
 export default function SupportPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
+          <div className="rounded-2xl border border-white/10 bg-slate-900 px-6 py-5 text-sm font-bold text-slate-300">
+            Loading support page...
+          </div>
+        </main>
+      }
+    >
+      <SupportPageContent />
+    </Suspense>
+  );
+}
+
+function SupportPageContent() {
   const searchParams = useSearchParams();
   const [loadingTier, setLoadingTier] = useState<TierId | null>(null);
   const [message, setMessage] = useState("");
