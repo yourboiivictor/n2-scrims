@@ -95,7 +95,7 @@ function SupportPageContent() {
         );
       }
 
-      window.location.href = payload.approvalUrl;
+      window.location.assign(payload.approvalUrl);
     } catch (error) {
       console.error(error);
       setMessage(
