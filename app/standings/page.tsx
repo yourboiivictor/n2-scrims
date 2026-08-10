@@ -3,6 +3,7 @@
 import { collection, onSnapshot, query } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "@/firebase";
+import { flagUrl } from "@/lib/countries";
 
 type PlayerStat = {
   name: string;
@@ -61,7 +62,7 @@ export default function StandingsPage() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
+    return onSnapshot(
       query(collection(db, "squads")),
       (snapshot) => {
         const countries: Record<
@@ -74,13 +75,9 @@ export default function StandingsPage() {
 
           countries[squadDocument.id] = {
             countryCode:
-              typeof data.countryCode === "string"
-                ? data.countryCode
-                : "",
+              typeof data.countryCode === "string" ? data.countryCode : "",
             countryName:
-              typeof data.countryName === "string"
-                ? data.countryName
-                : "",
+              typeof data.countryName === "string" ? data.countryName : "",
           };
         });
 
@@ -90,8 +87,6 @@ export default function StandingsPage() {
         console.error("Unable to load squad countries:", error);
       },
     );
-
-    return unsubscribe;
   }, []);
 
   const rankedStandings = useMemo(() => {
@@ -212,14 +207,13 @@ export default function StandingsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-1.5">
                         {countryCode && (
-                          <span
-                            className="shrink-0 text-sm leading-none"
+                          <img
+                            src={flagUrl(countryCode, 40)}
+                            alt=""
                             title={countryName || countryCode}
-                          >
-                            {countryFlag(countryCode)}
-                          </span>
+                            className="h-4 w-6 shrink-0 rounded-sm object-cover"
+                          />
                         )}
-
                         <p
                           className="truncate text-[11px] font-black leading-tight sm:text-xs"
                           title={standing.squadName}
@@ -353,16 +347,6 @@ function getPlayerStats(standing: Standing): { name: string; kills: number }[] {
   }
 
   return [];
-}
-
-function countryFlag(code: string) {
-  if (!/^[A-Za-z]{2}$/.test(code)) return "";
-
-  return code
-    .toUpperCase()
-    .replace(/./g, (character) =>
-      String.fromCodePoint(127397 + character.charCodeAt(0)),
-    );
 }
 
 function ScoreBox({

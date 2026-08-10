@@ -16,271 +16,11 @@ import {
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { auth, db } from "../../firebase";
+import CountryPicker from "@/components/CountryPicker";
+import { getCountryByCode } from "@/lib/countries";
 
 const MAX_SQUADS = 25;
 const MAX_LOGO_SIZE = 5 * 1024 * 1024;
-
-const COUNTRIES = [
-  ["AF", "Afghanistan"],
-  ["AL", "Albania"],
-  ["DZ", "Algeria"],
-  ["AS", "American Samoa"],
-  ["AD", "Andorra"],
-  ["AO", "Angola"],
-  ["AI", "Anguilla"],
-  ["AQ", "Antarctica"],
-  ["AG", "Antigua and Barbuda"],
-  ["AR", "Argentina"],
-  ["AM", "Armenia"],
-  ["AW", "Aruba"],
-  ["AU", "Australia"],
-  ["AT", "Austria"],
-  ["AZ", "Azerbaijan"],
-  ["BS", "Bahamas"],
-  ["BH", "Bahrain"],
-  ["BD", "Bangladesh"],
-  ["BB", "Barbados"],
-  ["BY", "Belarus"],
-  ["BE", "Belgium"],
-  ["BZ", "Belize"],
-  ["BJ", "Benin"],
-  ["BM", "Bermuda"],
-  ["BT", "Bhutan"],
-  ["BO", "Bolivia"],
-  ["BQ", "Bonaire, Sint Eustatius and Saba"],
-  ["BA", "Bosnia and Herzegovina"],
-  ["BW", "Botswana"],
-  ["BV", "Bouvet Island"],
-  ["BR", "Brazil"],
-  ["IO", "British Indian Ocean Territory"],
-  ["BN", "Brunei"],
-  ["BG", "Bulgaria"],
-  ["BF", "Burkina Faso"],
-  ["BI", "Burundi"],
-  ["CV", "Cabo Verde"],
-  ["KH", "Cambodia"],
-  ["CM", "Cameroon"],
-  ["CA", "Canada"],
-  ["KY", "Cayman Islands"],
-  ["CF", "Central African Republic"],
-  ["TD", "Chad"],
-  ["CL", "Chile"],
-  ["CN", "China"],
-  ["CX", "Christmas Island"],
-  ["CC", "Cocos (Keeling) Islands"],
-  ["CO", "Colombia"],
-  ["KM", "Comoros"],
-  ["CG", "Congo"],
-  ["CD", "Congo, Democratic Republic of the"],
-  ["CK", "Cook Islands"],
-  ["CR", "Costa Rica"],
-  ["HR", "Croatia"],
-  ["CU", "Cuba"],
-  ["CW", "Curaçao"],
-  ["CY", "Cyprus"],
-  ["CZ", "Czechia"],
-  ["CI", "Côte d’Ivoire"],
-  ["DK", "Denmark"],
-  ["DJ", "Djibouti"],
-  ["DM", "Dominica"],
-  ["DO", "Dominican Republic"],
-  ["EC", "Ecuador"],
-  ["EG", "Egypt"],
-  ["SV", "El Salvador"],
-  ["GQ", "Equatorial Guinea"],
-  ["ER", "Eritrea"],
-  ["EE", "Estonia"],
-  ["SZ", "Eswatini"],
-  ["ET", "Ethiopia"],
-  ["FK", "Falkland Islands"],
-  ["FO", "Faroe Islands"],
-  ["FJ", "Fiji"],
-  ["FI", "Finland"],
-  ["FR", "France"],
-  ["GF", "French Guiana"],
-  ["PF", "French Polynesia"],
-  ["TF", "French Southern Territories"],
-  ["GA", "Gabon"],
-  ["GM", "Gambia"],
-  ["GE", "Georgia"],
-  ["DE", "Germany"],
-  ["GH", "Ghana"],
-  ["GI", "Gibraltar"],
-  ["GR", "Greece"],
-  ["GL", "Greenland"],
-  ["GD", "Grenada"],
-  ["GP", "Guadeloupe"],
-  ["GU", "Guam"],
-  ["GT", "Guatemala"],
-  ["GG", "Guernsey"],
-  ["GN", "Guinea"],
-  ["GW", "Guinea-Bissau"],
-  ["GY", "Guyana"],
-  ["HT", "Haiti"],
-  ["HM", "Heard Island and McDonald Islands"],
-  ["VA", "Holy See"],
-  ["HN", "Honduras"],
-  ["HK", "Hong Kong"],
-  ["HU", "Hungary"],
-  ["IS", "Iceland"],
-  ["IN", "India"],
-  ["ID", "Indonesia"],
-  ["IR", "Iran"],
-  ["IQ", "Iraq"],
-  ["IE", "Ireland"],
-  ["IM", "Isle of Man"],
-  ["IL", "Israel"],
-  ["IT", "Italy"],
-  ["JM", "Jamaica"],
-  ["JP", "Japan"],
-  ["JE", "Jersey"],
-  ["JO", "Jordan"],
-  ["KZ", "Kazakhstan"],
-  ["KE", "Kenya"],
-  ["KI", "Kiribati"],
-  ["KP", "Korea, North"],
-  ["KR", "Korea, South"],
-  ["KW", "Kuwait"],
-  ["KG", "Kyrgyzstan"],
-  ["LA", "Laos"],
-  ["LV", "Latvia"],
-  ["LB", "Lebanon"],
-  ["LS", "Lesotho"],
-  ["LR", "Liberia"],
-  ["LY", "Libya"],
-  ["LI", "Liechtenstein"],
-  ["LT", "Lithuania"],
-  ["LU", "Luxembourg"],
-  ["MO", "Macao"],
-  ["MG", "Madagascar"],
-  ["MW", "Malawi"],
-  ["MY", "Malaysia"],
-  ["MV", "Maldives"],
-  ["ML", "Mali"],
-  ["MT", "Malta"],
-  ["MH", "Marshall Islands"],
-  ["MQ", "Martinique"],
-  ["MR", "Mauritania"],
-  ["MU", "Mauritius"],
-  ["YT", "Mayotte"],
-  ["MX", "Mexico"],
-  ["FM", "Micronesia"],
-  ["MD", "Moldova"],
-  ["MC", "Monaco"],
-  ["MN", "Mongolia"],
-  ["ME", "Montenegro"],
-  ["MS", "Montserrat"],
-  ["MA", "Morocco"],
-  ["MZ", "Mozambique"],
-  ["MM", "Myanmar"],
-  ["NA", "Namibia"],
-  ["NR", "Nauru"],
-  ["NP", "Nepal"],
-  ["NL", "Netherlands"],
-  ["NC", "New Caledonia"],
-  ["NZ", "New Zealand"],
-  ["NI", "Nicaragua"],
-  ["NE", "Niger"],
-  ["NG", "Nigeria"],
-  ["NU", "Niue"],
-  ["NF", "Norfolk Island"],
-  ["MK", "North Macedonia"],
-  ["MP", "Northern Mariana Islands"],
-  ["NO", "Norway"],
-  ["OM", "Oman"],
-  ["PK", "Pakistan"],
-  ["PW", "Palau"],
-  ["PS", "Palestine"],
-  ["PA", "Panama"],
-  ["PG", "Papua New Guinea"],
-  ["PY", "Paraguay"],
-  ["PE", "Peru"],
-  ["PH", "Philippines"],
-  ["PN", "Pitcairn"],
-  ["PL", "Poland"],
-  ["PT", "Portugal"],
-  ["PR", "Puerto Rico"],
-  ["QA", "Qatar"],
-  ["RO", "Romania"],
-  ["RU", "Russia"],
-  ["RW", "Rwanda"],
-  ["RE", "Réunion"],
-  ["BL", "Saint Barthélemy"],
-  ["SH", "Saint Helena"],
-  ["KN", "Saint Kitts and Nevis"],
-  ["LC", "Saint Lucia"],
-  ["MF", "Saint Martin"],
-  ["PM", "Saint Pierre and Miquelon"],
-  ["VC", "Saint Vincent and the Grenadines"],
-  ["WS", "Samoa"],
-  ["SM", "San Marino"],
-  ["ST", "Sao Tome and Principe"],
-  ["SA", "Saudi Arabia"],
-  ["SN", "Senegal"],
-  ["RS", "Serbia"],
-  ["SC", "Seychelles"],
-  ["SL", "Sierra Leone"],
-  ["SG", "Singapore"],
-  ["SX", "Sint Maarten"],
-  ["SK", "Slovakia"],
-  ["SI", "Slovenia"],
-  ["SB", "Solomon Islands"],
-  ["SO", "Somalia"],
-  ["ZA", "South Africa"],
-  ["GS", "South Georgia and the South Sandwich Islands"],
-  ["SS", "South Sudan"],
-  ["ES", "Spain"],
-  ["LK", "Sri Lanka"],
-  ["SD", "Sudan"],
-  ["SR", "Suriname"],
-  ["SJ", "Svalbard and Jan Mayen"],
-  ["SE", "Sweden"],
-  ["CH", "Switzerland"],
-  ["SY", "Syria"],
-  ["TW", "Taiwan"],
-  ["TJ", "Tajikistan"],
-  ["TZ", "Tanzania"],
-  ["TH", "Thailand"],
-  ["TL", "Timor-Leste"],
-  ["TG", "Togo"],
-  ["TK", "Tokelau"],
-  ["TO", "Tonga"],
-  ["TT", "Trinidad and Tobago"],
-  ["TN", "Tunisia"],
-  ["TM", "Turkmenistan"],
-  ["TC", "Turks and Caicos Islands"],
-  ["TV", "Tuvalu"],
-  ["TR", "Türkiye"],
-  ["UG", "Uganda"],
-  ["UA", "Ukraine"],
-  ["AE", "United Arab Emirates"],
-  ["GB", "United Kingdom"],
-  ["US", "United States"],
-  ["UM", "United States Minor Outlying Islands"],
-  ["UY", "Uruguay"],
-  ["UZ", "Uzbekistan"],
-  ["VU", "Vanuatu"],
-  ["VE", "Venezuela"],
-  ["VN", "Vietnam"],
-  ["VG", "Virgin Islands, British"],
-  ["VI", "Virgin Islands, U.S."],
-  ["WF", "Wallis and Futuna"],
-  ["EH", "Western Sahara"],
-  ["YE", "Yemen"],
-  ["ZM", "Zambia"],
-  ["ZW", "Zimbabwe"],
-  ["AX", "Åland Islands"],
-] as const;
-
-function countryFlag(code: string) {
-  if (!/^[A-Za-z]{2}$/.test(code)) return "";
-
-  return code
-    .toUpperCase()
-    .replace(/./g, (character) =>
-      String.fromCodePoint(127397 + character.charCodeAt(0)),
-    );
-}
 
 
 const ALLOWED_LOGO_TYPES = [
@@ -318,7 +58,6 @@ export default function RegisterPage() {
 
   const [squadName, setSquadName] = useState("");
   const [facebookName, setFacebookName] = useState("");
-  const [countrySearch, setCountrySearch] = useState("");
   const [countryCode, setCountryCode] = useState("");
   const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
 
@@ -601,7 +340,7 @@ export default function RegisterPage() {
     }
 
     if (!countryCode) {
-      setMessage("Please select a country or region from the country list.");
+      setMessage("Please select your squad country or region.");
       return;
     }
 
@@ -698,9 +437,7 @@ export default function RegisterPage() {
 
       setMessage("Saving squad registration...");
 
-      const selectedCountry = COUNTRIES.find(
-        ([code]) => code === countryCode,
-      );
+      const selectedCountry = getCountryByCode(countryCode);
 
       await addDoc(collection(db, "squads"), {
         squadName: cleanSquadName,
@@ -723,7 +460,7 @@ export default function RegisterPage() {
         ownerName: user.displayName || "",
         facebookName: cleanFacebookName,
         countryCode,
-        countryName: selectedCountry?.[1] || "",
+        countryName: selectedCountry?.name || "",
 
         status: "pending",
         createdAt: serverTimestamp(),
@@ -731,7 +468,6 @@ export default function RegisterPage() {
 
       setSquadName("");
       setFacebookName("");
-      setCountrySearch("");
       setCountryCode("");
       setPlayerNames(["", "", "", ""]);
 
@@ -996,7 +732,7 @@ export default function RegisterPage() {
           </h1>
 
           <p className="mt-3 text-gray-400">
-            Enter your squad name, country or region, Facebook or Messenger name,
+            Enter your squad name, Facebook or Messenger name,
             upload a team logo, and add exactly four players.
           </p>
 
@@ -1041,47 +777,15 @@ export default function RegisterPage() {
           </div>
 
           <div className="mt-8">
-            <label
-              htmlFor="country-search"
-              className="block text-sm font-bold text-gray-300"
-            >
-              Squad Country / Region
-            </label>
-
-            <input
-              id="country-search"
-              list="country-options"
-              type="text"
-              value={countrySearch}
-              onChange={(event) => {
-                const value = event.target.value;
-                setCountrySearch(value);
-
-                const match = COUNTRIES.find(
-                  ([code, name]) =>
-                    `${countryFlag(code)} ${name}` === value ||
-                    name.toLowerCase() === value.toLowerCase(),
-                );
-
-                setCountryCode(match?.[0] || "");
-              }}
-              placeholder="Search country or region"
+            <CountryPicker
+              value={countryCode}
+              onChange={(code) => setCountryCode(code)}
               disabled={submitting}
-              autoComplete="off"
-              className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+              label="Squad Country / Region"
             />
 
-            <datalist id="country-options">
-              {COUNTRIES.map(([code, name]) => (
-                <option
-                  key={code}
-                  value={`${countryFlag(code)} ${name}`}
-                />
-              ))}
-            </datalist>
-
             <p className="mt-2 text-sm text-gray-400">
-              Start typing to search. Countries and territories are listed alphabetically.
+              Start typing or tap the arrow to choose a country or region.
             </p>
           </div>
 

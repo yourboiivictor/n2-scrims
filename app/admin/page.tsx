@@ -24,6 +24,8 @@ import {
 import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { auth, db, googleProvider } from "@/firebase";
+import CountryPicker from "@/components/CountryPicker";
+import { flagUrl, getCountryByCode } from "@/lib/countries";
 
 type Player = {
   name: string;
@@ -50,270 +52,6 @@ type Squad = {
 
 const OWNER_EMAIL = "victornicetry2@gmail.com";
 
-const COUNTRIES = [
-  ["AF", "Afghanistan"],
-  ["AL", "Albania"],
-  ["DZ", "Algeria"],
-  ["AS", "American Samoa"],
-  ["AD", "Andorra"],
-  ["AO", "Angola"],
-  ["AI", "Anguilla"],
-  ["AQ", "Antarctica"],
-  ["AG", "Antigua and Barbuda"],
-  ["AR", "Argentina"],
-  ["AM", "Armenia"],
-  ["AW", "Aruba"],
-  ["AU", "Australia"],
-  ["AT", "Austria"],
-  ["AZ", "Azerbaijan"],
-  ["BS", "Bahamas"],
-  ["BH", "Bahrain"],
-  ["BD", "Bangladesh"],
-  ["BB", "Barbados"],
-  ["BY", "Belarus"],
-  ["BE", "Belgium"],
-  ["BZ", "Belize"],
-  ["BJ", "Benin"],
-  ["BM", "Bermuda"],
-  ["BT", "Bhutan"],
-  ["BO", "Bolivia"],
-  ["BQ", "Bonaire, Sint Eustatius and Saba"],
-  ["BA", "Bosnia and Herzegovina"],
-  ["BW", "Botswana"],
-  ["BV", "Bouvet Island"],
-  ["BR", "Brazil"],
-  ["IO", "British Indian Ocean Territory"],
-  ["BN", "Brunei"],
-  ["BG", "Bulgaria"],
-  ["BF", "Burkina Faso"],
-  ["BI", "Burundi"],
-  ["CV", "Cabo Verde"],
-  ["KH", "Cambodia"],
-  ["CM", "Cameroon"],
-  ["CA", "Canada"],
-  ["KY", "Cayman Islands"],
-  ["CF", "Central African Republic"],
-  ["TD", "Chad"],
-  ["CL", "Chile"],
-  ["CN", "China"],
-  ["CX", "Christmas Island"],
-  ["CC", "Cocos (Keeling) Islands"],
-  ["CO", "Colombia"],
-  ["KM", "Comoros"],
-  ["CG", "Congo"],
-  ["CD", "Congo, Democratic Republic of the"],
-  ["CK", "Cook Islands"],
-  ["CR", "Costa Rica"],
-  ["HR", "Croatia"],
-  ["CU", "Cuba"],
-  ["CW", "Curaçao"],
-  ["CY", "Cyprus"],
-  ["CZ", "Czechia"],
-  ["CI", "Côte d’Ivoire"],
-  ["DK", "Denmark"],
-  ["DJ", "Djibouti"],
-  ["DM", "Dominica"],
-  ["DO", "Dominican Republic"],
-  ["EC", "Ecuador"],
-  ["EG", "Egypt"],
-  ["SV", "El Salvador"],
-  ["GQ", "Equatorial Guinea"],
-  ["ER", "Eritrea"],
-  ["EE", "Estonia"],
-  ["SZ", "Eswatini"],
-  ["ET", "Ethiopia"],
-  ["FK", "Falkland Islands"],
-  ["FO", "Faroe Islands"],
-  ["FJ", "Fiji"],
-  ["FI", "Finland"],
-  ["FR", "France"],
-  ["GF", "French Guiana"],
-  ["PF", "French Polynesia"],
-  ["TF", "French Southern Territories"],
-  ["GA", "Gabon"],
-  ["GM", "Gambia"],
-  ["GE", "Georgia"],
-  ["DE", "Germany"],
-  ["GH", "Ghana"],
-  ["GI", "Gibraltar"],
-  ["GR", "Greece"],
-  ["GL", "Greenland"],
-  ["GD", "Grenada"],
-  ["GP", "Guadeloupe"],
-  ["GU", "Guam"],
-  ["GT", "Guatemala"],
-  ["GG", "Guernsey"],
-  ["GN", "Guinea"],
-  ["GW", "Guinea-Bissau"],
-  ["GY", "Guyana"],
-  ["HT", "Haiti"],
-  ["HM", "Heard Island and McDonald Islands"],
-  ["VA", "Holy See"],
-  ["HN", "Honduras"],
-  ["HK", "Hong Kong"],
-  ["HU", "Hungary"],
-  ["IS", "Iceland"],
-  ["IN", "India"],
-  ["ID", "Indonesia"],
-  ["IR", "Iran"],
-  ["IQ", "Iraq"],
-  ["IE", "Ireland"],
-  ["IM", "Isle of Man"],
-  ["IL", "Israel"],
-  ["IT", "Italy"],
-  ["JM", "Jamaica"],
-  ["JP", "Japan"],
-  ["JE", "Jersey"],
-  ["JO", "Jordan"],
-  ["KZ", "Kazakhstan"],
-  ["KE", "Kenya"],
-  ["KI", "Kiribati"],
-  ["KP", "Korea, North"],
-  ["KR", "Korea, South"],
-  ["KW", "Kuwait"],
-  ["KG", "Kyrgyzstan"],
-  ["LA", "Laos"],
-  ["LV", "Latvia"],
-  ["LB", "Lebanon"],
-  ["LS", "Lesotho"],
-  ["LR", "Liberia"],
-  ["LY", "Libya"],
-  ["LI", "Liechtenstein"],
-  ["LT", "Lithuania"],
-  ["LU", "Luxembourg"],
-  ["MO", "Macao"],
-  ["MG", "Madagascar"],
-  ["MW", "Malawi"],
-  ["MY", "Malaysia"],
-  ["MV", "Maldives"],
-  ["ML", "Mali"],
-  ["MT", "Malta"],
-  ["MH", "Marshall Islands"],
-  ["MQ", "Martinique"],
-  ["MR", "Mauritania"],
-  ["MU", "Mauritius"],
-  ["YT", "Mayotte"],
-  ["MX", "Mexico"],
-  ["FM", "Micronesia"],
-  ["MD", "Moldova"],
-  ["MC", "Monaco"],
-  ["MN", "Mongolia"],
-  ["ME", "Montenegro"],
-  ["MS", "Montserrat"],
-  ["MA", "Morocco"],
-  ["MZ", "Mozambique"],
-  ["MM", "Myanmar"],
-  ["NA", "Namibia"],
-  ["NR", "Nauru"],
-  ["NP", "Nepal"],
-  ["NL", "Netherlands"],
-  ["NC", "New Caledonia"],
-  ["NZ", "New Zealand"],
-  ["NI", "Nicaragua"],
-  ["NE", "Niger"],
-  ["NG", "Nigeria"],
-  ["NU", "Niue"],
-  ["NF", "Norfolk Island"],
-  ["MK", "North Macedonia"],
-  ["MP", "Northern Mariana Islands"],
-  ["NO", "Norway"],
-  ["OM", "Oman"],
-  ["PK", "Pakistan"],
-  ["PW", "Palau"],
-  ["PS", "Palestine"],
-  ["PA", "Panama"],
-  ["PG", "Papua New Guinea"],
-  ["PY", "Paraguay"],
-  ["PE", "Peru"],
-  ["PH", "Philippines"],
-  ["PN", "Pitcairn"],
-  ["PL", "Poland"],
-  ["PT", "Portugal"],
-  ["PR", "Puerto Rico"],
-  ["QA", "Qatar"],
-  ["RO", "Romania"],
-  ["RU", "Russia"],
-  ["RW", "Rwanda"],
-  ["RE", "Réunion"],
-  ["BL", "Saint Barthélemy"],
-  ["SH", "Saint Helena"],
-  ["KN", "Saint Kitts and Nevis"],
-  ["LC", "Saint Lucia"],
-  ["MF", "Saint Martin"],
-  ["PM", "Saint Pierre and Miquelon"],
-  ["VC", "Saint Vincent and the Grenadines"],
-  ["WS", "Samoa"],
-  ["SM", "San Marino"],
-  ["ST", "Sao Tome and Principe"],
-  ["SA", "Saudi Arabia"],
-  ["SN", "Senegal"],
-  ["RS", "Serbia"],
-  ["SC", "Seychelles"],
-  ["SL", "Sierra Leone"],
-  ["SG", "Singapore"],
-  ["SX", "Sint Maarten"],
-  ["SK", "Slovakia"],
-  ["SI", "Slovenia"],
-  ["SB", "Solomon Islands"],
-  ["SO", "Somalia"],
-  ["ZA", "South Africa"],
-  ["GS", "South Georgia and the South Sandwich Islands"],
-  ["SS", "South Sudan"],
-  ["ES", "Spain"],
-  ["LK", "Sri Lanka"],
-  ["SD", "Sudan"],
-  ["SR", "Suriname"],
-  ["SJ", "Svalbard and Jan Mayen"],
-  ["SE", "Sweden"],
-  ["CH", "Switzerland"],
-  ["SY", "Syria"],
-  ["TW", "Taiwan"],
-  ["TJ", "Tajikistan"],
-  ["TZ", "Tanzania"],
-  ["TH", "Thailand"],
-  ["TL", "Timor-Leste"],
-  ["TG", "Togo"],
-  ["TK", "Tokelau"],
-  ["TO", "Tonga"],
-  ["TT", "Trinidad and Tobago"],
-  ["TN", "Tunisia"],
-  ["TM", "Turkmenistan"],
-  ["TC", "Turks and Caicos Islands"],
-  ["TV", "Tuvalu"],
-  ["TR", "Türkiye"],
-  ["UG", "Uganda"],
-  ["UA", "Ukraine"],
-  ["AE", "United Arab Emirates"],
-  ["GB", "United Kingdom"],
-  ["US", "United States"],
-  ["UM", "United States Minor Outlying Islands"],
-  ["UY", "Uruguay"],
-  ["UZ", "Uzbekistan"],
-  ["VU", "Vanuatu"],
-  ["VE", "Venezuela"],
-  ["VN", "Vietnam"],
-  ["VG", "Virgin Islands, British"],
-  ["VI", "Virgin Islands, U.S."],
-  ["WF", "Wallis and Futuna"],
-  ["EH", "Western Sahara"],
-  ["YE", "Yemen"],
-  ["ZM", "Zambia"],
-  ["ZW", "Zimbabwe"],
-  ["AX", "Åland Islands"],
-] as const;
-
-function countryFlag(code: string) {
-  if (!/^[A-Za-z]{2}$/.test(code)) return "";
-
-  return code
-    .toUpperCase()
-    .replace(/./g, (character) =>
-      String.fromCodePoint(127397 + character.charCodeAt(0)),
-    );
-}
-
-
-
 export default function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -332,7 +70,6 @@ export default function AdminPage() {
   const [editingSquad, setEditingSquad] = useState<Squad | null>(null);
   const [editSquadName, setEditSquadName] = useState("");
   const [editFacebookName, setEditFacebookName] = useState("");
-  const [editCountrySearch, setEditCountrySearch] = useState("");
   const [editCountryCode, setEditCountryCode] = useState("");
   const [editPlayerNames, setEditPlayerNames] = useState(["", "", "", ""]);
   const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
@@ -342,6 +79,7 @@ export default function AdminPage() {
   const [showAddSquad, setShowAddSquad] = useState(false);
   const [newSquadName, setNewSquadName] = useState("");
   const [newFacebookName, setNewFacebookName] = useState("");
+  const [newCountryCode, setNewCountryCode] = useState("");
   const [newPlayerNames, setNewPlayerNames] = useState(["", "", "", ""]);
   const [newSlot, setNewSlot] = useState("");
   const [newLogoFile, setNewLogoFile] = useState<File | null>(null);
@@ -592,6 +330,7 @@ export default function AdminPage() {
   function resetAddSquadForm() {
     setNewSquadName("");
     setNewFacebookName("");
+    setNewCountryCode("");
     setNewPlayerNames(["", "", "", ""]);
     setNewSlot("");
     setNewLogoFile(null);
@@ -629,6 +368,7 @@ export default function AdminPage() {
 
     const cleanSquadName = newSquadName.trim();
     const cleanFacebookName = newFacebookName.trim();
+    const selectedCountry = getCountryByCode(newCountryCode);
     const cleanPlayers = newPlayerNames.map((name) => name.trim());
     const parsedSlot = newSlot.trim() ? Number.parseInt(newSlot, 10) : null;
 
@@ -698,6 +438,8 @@ export default function AdminPage() {
         squadName: cleanSquadName,
         squadNameLower: cleanSquadName.toLowerCase(),
         facebookName: cleanFacebookName,
+        countryCode: newCountryCode,
+        countryName: selectedCountry?.name || "",
         players,
         logoUrl,
         logoPublicId,
@@ -731,11 +473,6 @@ export default function AdminPage() {
     setEditSquadName(squad.squadName);
     setEditFacebookName(squad.facebookName || "");
     setEditCountryCode(squad.countryCode || "");
-    setEditCountrySearch(
-      squad.countryCode
-        ? `${countryFlag(squad.countryCode)} ${squad.countryName || ""}`.trim()
-        : "",
-    );
     setEditPlayerNames([0, 1, 2, 3].map((index) => squad.players[index]?.name || ""));
     setEditLogoFile(null);
     setEditLogoPreview(squad.logoUrl || "");
@@ -746,6 +483,7 @@ export default function AdminPage() {
   function closeEditSquad() {
     if (savingEdit) return;
     setEditingSquad(null);
+    setEditCountryCode("");
     setEditLogoFile(null);
     setEditLogoPreview("");
     setRemoveCurrentLogo(false);
@@ -794,11 +532,6 @@ export default function AdminPage() {
       return;
     }
 
-    if (editCountrySearch.trim() && !editCountryCode) {
-      setMessage("Select a country or region from the list.");
-      return;
-    }
-
     setSavingEdit(true);
     setWorkingId(editingSquad.id);
     setMessage("");
@@ -842,16 +575,14 @@ export default function AdminPage() {
         role: index === 0 ? "Captain" : `Player ${index + 1}`,
       }));
 
-      const selectedCountry = COUNTRIES.find(
-        ([code]) => code === editCountryCode,
-      );
+      const selectedCountry = getCountryByCode(editCountryCode);
 
       await updateDoc(doc(db, "squads", editingSquad.id), {
         squadName: cleanSquadName,
         squadNameLower: cleanSquadName.toLowerCase(),
         facebookName: cleanFacebookName,
         countryCode: editCountryCode,
-        countryName: selectedCountry?.[1] || "",
+        countryName: selectedCountry?.name || "",
         players,
         logoUrl,
         logoPublicId,
@@ -865,7 +596,7 @@ export default function AdminPage() {
                 squadName: cleanSquadName,
                 facebookName: cleanFacebookName,
                 countryCode: editCountryCode,
-                countryName: selectedCountry?.[1] || "",
+                countryName: selectedCountry?.name || "",
                 players,
                 logoUrl,
                 logoPublicId,
@@ -1288,12 +1019,14 @@ export default function AdminPage() {
                         <td className="px-3 py-3 font-black">
                           {squad.squadName}
                         </td>
-                        <td className="px-3 py-3 text-xs">
+                        <td className="px-3 py-3">
                           {squad.countryCode ? (
-                            <span className="font-bold">
-                              {countryFlag(squad.countryCode)}{" "}
-                              {squad.countryName || squad.countryCode}
-                            </span>
+                            <img
+                              src={flagUrl(squad.countryCode, 40)}
+                              alt=""
+                              title={squad.countryName || squad.countryCode}
+                              className="h-5 w-8 rounded-sm object-cover shadow-sm"
+                            />
                           ) : (
                             "—"
                           )}
@@ -1432,6 +1165,15 @@ export default function AdminPage() {
             <label className="mt-5 block text-sm font-bold text-gray-300">Facebook / Messenger Name (optional)</label>
             <input value={newFacebookName} onChange={(event) => setNewFacebookName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" placeholder="Messenger name" />
 
+            <div className="mt-5">
+              <CountryPicker
+                value={newCountryCode}
+                onChange={(code) => setNewCountryCode(code)}
+                disabled={savingNewSquad}
+                label="Country / Region (optional)"
+              />
+            </div>
+
             <div className="mt-6 rounded-2xl border border-gray-800 p-5">
               <h3 className="text-xl font-black text-blue-300">Players</h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1491,36 +1233,15 @@ export default function AdminPage() {
 
             <label className="mt-5 block text-sm font-bold text-gray-300">Facebook / Messenger Name</label>
             <input value={editFacebookName} onChange={(event) => setEditFacebookName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" />
-            <label className="mt-5 block text-sm font-bold text-gray-300">
-              Country / Region
-            </label>
-            <input
-              list="edit-country-options"
-              value={editCountrySearch}
-              onChange={(event) => {
-                const value = event.target.value;
-                setEditCountrySearch(value);
 
-                const match = COUNTRIES.find(
-                  ([code, name]) =>
-                    `${countryFlag(code)} ${name}` === value ||
-                    name.toLowerCase() === value.toLowerCase(),
-                );
-
-                setEditCountryCode(match?.[0] || "");
-              }}
-              placeholder="Search country or region"
-              autoComplete="off"
-              className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3"
-            />
-            <datalist id="edit-country-options">
-              {COUNTRIES.map(([code, name]) => (
-                <option key={code} value={`${countryFlag(code)} ${name}`} />
-              ))}
-            </datalist>
-            <p className="mt-2 text-xs text-gray-500">
-              Current flag: {editCountryCode ? countryFlag(editCountryCode) : "—"}
-            </p>
+            <div className="mt-5">
+              <CountryPicker
+                value={editCountryCode}
+                onChange={(code) => setEditCountryCode(code)}
+                disabled={savingEdit}
+                label="Country / Region"
+              />
+            </div>
 
             <div className="mt-6 rounded-2xl border border-gray-800 p-5">
               <h3 className="text-xl font-black text-blue-300">Players</h3>

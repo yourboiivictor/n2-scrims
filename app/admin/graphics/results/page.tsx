@@ -4,6 +4,7 @@ import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/firebase";
+import { flagUrl } from "@/lib/countries";
 import {
   defaultTournamentSettings,
   loadTournamentStats,
@@ -176,6 +177,21 @@ export default function ResultsGraphicsPage() {
       }),
     );
 
+    const loadedFlags = await Promise.all(
+      topTen.map(async (row) => {
+        const countryCode = squadCountries[row.squadId]?.countryCode;
+
+        if (!countryCode) return null;
+
+        try {
+          return await loadCanvasImage(flagUrl(countryCode, 80));
+        } catch (error) {
+          console.warn(`Unable to load flag for ${row.squadName}:`, error);
+          return null;
+        }
+      }),
+    );
+
     topTen.forEach((row, index) => {
       const y = 560 + index * 118;
 
@@ -210,17 +226,15 @@ export default function ResultsGraphicsPage() {
         );
       }
 
-      const country = squadCountries[row.squadId];
-      const flag = countryFlag(country?.countryCode || "");
+      const flag = loadedFlags[index];
 
       ctx.textAlign = "left";
       ctx.fillStyle = "#ffffff";
 
       if (flag) {
-        ctx.font = "30px Arial";
-        ctx.fillText(flag, 295, y + 57);
+        drawImageContained(ctx, flag, 295, y + 31, 42, 28);
         ctx.font = "900 30px Arial";
-        ctx.fillText(row.squadName.slice(0, 18), 340, y + 57);
+        ctx.fillText(row.squadName.slice(0, 18), 350, y + 57);
       } else {
         ctx.font = "900 30px Arial";
         ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
@@ -336,20 +350,19 @@ export default function ResultsGraphicsPage() {
                     </div>
 
                     <div className="flex min-w-0 items-center gap-2">
-                      {countryFlag(
-                        squadCountries[row.squadId]?.countryCode || "",
-                      ) && (
-                        <span
-                          className="shrink-0 text-lg leading-none"
+                      {squadCountries[row.squadId]?.countryCode && (
+                        <img
+                          src={flagUrl(
+                            squadCountries[row.squadId].countryCode,
+                            40,
+                          )}
+                          alt=""
                           title={
                             squadCountries[row.squadId]?.countryName ||
                             squadCountries[row.squadId]?.countryCode
                           }
-                        >
-                          {countryFlag(
-                            squadCountries[row.squadId]?.countryCode || "",
-                          )}
-                        </span>
+                          className="h-4 w-6 shrink-0 rounded-sm object-cover"
+                        />
                       )}
 
                       <span className="truncate font-black">
@@ -396,17 +409,6 @@ export default function ResultsGraphicsPage() {
   );
 }
 
-
-
-function countryFlag(code: string) {
-  if (!/^[A-Za-z]{2}$/.test(code)) return "";
-
-  return code
-    .toUpperCase()
-    .replace(/./g, (character) =>
-      String.fromCodePoint(127397 + character.charCodeAt(0)),
-    );
-}
 
 function loadCanvasImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {

@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { db } from "@/firebase";
+import { flagUrl } from "@/lib/countries";
 
 type LiveMatchSettings = {
   matchNumber: number;
@@ -128,13 +129,9 @@ export default function LiveOverlayPage() {
 
           countries[squadDocument.id] = {
             countryCode:
-              typeof data.countryCode === "string"
-                ? data.countryCode
-                : "",
+              typeof data.countryCode === "string" ? data.countryCode : "",
             countryName:
-              typeof data.countryName === "string"
-                ? data.countryName
-                : "",
+              typeof data.countryName === "string" ? data.countryName : "",
           };
         });
 
@@ -374,13 +371,9 @@ export default function LiveOverlayPage() {
                     standing={{
                       ...standing,
                       countryCode:
-                        squadCountries[standing.squadId]?.countryCode ||
-                        standing.countryCode ||
-                        "",
+                        squadCountries[standing.squadId]?.countryCode || "",
                       countryName:
-                        squadCountries[standing.squadId]?.countryName ||
-                        standing.countryName ||
-                        "",
+                        squadCountries[standing.squadId]?.countryName || "",
                     }}
                     rank={index + 1}
                   />
@@ -393,16 +386,6 @@ export default function LiveOverlayPage() {
       </div>
     </main>
   );
-}
-
-function countryFlag(code: string) {
-  if (!/^[A-Za-z]{2}$/.test(code)) return "";
-
-  return code
-    .toUpperCase()
-    .replace(/./g, (character) =>
-      String.fromCodePoint(127397 + character.charCodeAt(0)),
-    );
 }
 
 function InfoBox({
@@ -467,14 +450,13 @@ function StandingRow({
 
       <div className="flex min-w-0 items-center gap-2">
         {standing.countryCode && (
-          <span
-            className="shrink-0 text-lg leading-none"
+          <img
+            src={flagUrl(standing.countryCode, 40)}
+            alt=""
             title={standing.countryName || standing.countryCode}
-          >
-            {countryFlag(standing.countryCode)}
-          </span>
+            className="h-4 w-6 shrink-0 rounded-sm object-cover"
+          />
         )}
-
         <p className="truncate text-[14px] font-black uppercase">
           {standing.squadName}
         </p>
