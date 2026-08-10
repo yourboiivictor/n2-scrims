@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     const authorized =
-      identity.email.toLowerCase() === OWNER_EMAIL ||
+      identity.email.toLowerCase() === OWNER_EMAIL.toLowerCase() ||
       (await verifyStaffAdmin(identity.email, token));
 
     if (!authorized) {
@@ -61,7 +61,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = (await request.json()) as RequestBody;
+    let body: RequestBody;
+
+    try {
+      body = (await request.json()) as RequestBody;
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request body." },
+        { status: 400 },
+      );
+    }
 
     if (
       !Array.isArray(body.images) ||
@@ -100,10 +109,16 @@ export async function POST(request: NextRequest) {
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY is not configured in Vercel." },
+        {
+          error:
+            "OPENAI_API_KEY is not configured. Add it to .env.local and Vercel environment variables.",
+        },
         { status: 500 },
       );
     }
+
+    const model =
+      process.env.OPENAI_MATCH_REVIEW_MODEL?.trim() || "gpt-5-mini";
 
     const content: Array<Record<string, unknown>> = [
       {
@@ -113,66 +128,176 @@ export async function POST(request: NextRequest) {
       ...body.images.map((image) => ({
         type: "input_image",
         image_url: image.dataUrl,
-        detail: "high",
       })),
     ];
 
-    const aiResponse = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model:
-            process.env.OPENAI_MATCH_REVIEW_MODEL || "gpt-5-mini",
-          input: [
-            {
-              role: "user",
-              content,
-            },
-          ],
-        }),
+    const aiResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        model,
+        input: [
+          {
+            role: "user",
+            content,
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "pubg_match_review",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                summary: { type: "string" },
+                warnings: {
+                  type: "array",
+                  items: { type: "string" },
+                },
+                squads: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      squadId: { type: "string" },
+                      squadName: { type: "string" },
+                      screenshotSquadName: { type: "string" },
+                      placement: {
+                        anyOf: [{ type: "number" }, { type: "null" }],
+                      },
+                      confidence: { type: "number" },
+                      note: { type: "string" },
+                      players: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          additionalProperties: false,
+                          properties: {
+                            playerIndex: { type: "number" },
+                            registeredName: { type: "string" },
+                            screenshotName: { type: "string" },
+                            kills: {
+                              anyOf: [{ type: "number" }, { type: "null" }],
+                            },
+                            confidence: { type: "number" },
+                            nameMatch: {
+                              type: "string",
+                              enum: ["exact", "similar", "uncertain"],
+                            },
+                            applySuggestedName: { type: "boolean" },
+                            note: { type: "string" },
+                          },
+                          required: [
+                            "playerIndex",
+                            "registeredName",
+                            "screenshotName",
+                            "kills",
+                            "confidence",
+                            "nameMatch",
+                            "applySuggestedName",
+                            "note",
+                          ],
+                        },
+                      },
+                    },
+                    required: [
+                      "squadId",
+                      "squadName",
+                      "screenshotSquadName",
+                      "placement",
+                      "confidence",
+                      "players",
+                      "note",
+                    ],
+                  },
+                },
+              },
+              required: ["summary", "warnings", "squads"],
+            },
+          },
+        },
+      }),
+      cache: "no-store",
+    });
 
-    const aiPayload: unknown = await aiResponse.json();
+    const raw = await aiResponse.text();
+
+    let aiPayload: unknown = null;
+
+    try {
+      aiPayload = raw ? (JSON.parse(raw) as unknown) : null;
+    } catch {
+      console.error("OpenAI returned non-JSON:", raw);
+    }
 
     if (!aiResponse.ok) {
-      console.error("OpenAI review error:", aiPayload);
+      console.error("OpenAI review error:", aiPayload || raw);
 
       return NextResponse.json(
         {
           error:
             getNestedString(aiPayload, ["error", "message"]) ||
-            "The AI service could not review the screenshots.",
+            `OpenAI request failed with status ${aiResponse.status}.`,
+          details:
+            process.env.NODE_ENV === "development"
+              ? raw.slice(0, 1500)
+              : undefined,
         },
         { status: 502 },
       );
     }
 
-    const parsed = parseJsonObject(extractResponseText(aiPayload));
+    const responseText = extractResponseText(aiPayload);
 
-    if (!parsed) {
+    if (!responseText) {
+      console.error("No output text found in OpenAI response:", aiPayload);
+
       return NextResponse.json(
         {
-          error:
-            "AI returned an unreadable review. Try again.",
+          error: "AI returned no readable review.",
+          details:
+            process.env.NODE_ENV === "development"
+              ? raw.slice(0, 1500)
+              : undefined,
         },
         { status: 502 },
       );
     }
 
-    return NextResponse.json(
-      normalizeReview(parsed, body.squads),
-    );
+    const parsed = parseJsonObject(responseText);
+
+    if (!parsed) {
+      console.error("Could not parse AI JSON:", responseText);
+
+      return NextResponse.json(
+        {
+          error: "AI returned an unreadable review. Try again.",
+          details:
+            process.env.NODE_ENV === "development"
+              ? responseText.slice(0, 1500)
+              : undefined,
+        },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json(normalizeReview(parsed, body.squads));
   } catch (error) {
     console.error("AI match review route failed:", error);
 
     return NextResponse.json(
-      { error: "Unable to review screenshots." },
+      {
+        error:
+          error instanceof Error
+            ? `Unable to review screenshots: ${error.message}`
+            : "Unable to review screenshots.",
+      },
       { status: 500 },
     );
   }
@@ -187,9 +312,7 @@ async function verifyFirebaseUser(idToken: string) {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 
   if (!apiKey) {
-    throw new Error(
-      "NEXT_PUBLIC_FIREBASE_API_KEY is missing.",
-    );
+    throw new Error("NEXT_PUBLIC_FIREBASE_API_KEY is missing.");
   }
 
   const response = await fetch(
@@ -223,12 +346,8 @@ async function verifyFirebaseUser(idToken: string) {
   };
 }
 
-async function verifyStaffAdmin(
-  email: string,
-  idToken: string,
-) {
-  const projectId =
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+async function verifyStaffAdmin(email: string, idToken: string) {
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
   if (!projectId) return false;
 
@@ -266,32 +385,22 @@ KILL POINT VALUE: ${body.killPointValue}
 REGISTERED CURRENT-MATCH ROSTER:
 ${JSON.stringify(body.squads, null, 2)}
 
-Read only visible screenshot data. Extract squad name, player IGN, individual kills, and placement when visible. Fuzzy-match screenshot names to the registered roster. Small spelling, capitalization, spaces, punctuation, superscripts, and clan separators can still be the same player. Use squad context and teammates as evidence. Do not force ambiguous matches. Never invent values. Do not calculate official points. Set applySuggestedName=true only when the screenshot clearly shows a changed IGN and confidence is at least 0.90. confidence is 0 to 1.
+Read only visible screenshot data. Extract squad name, player IGN, individual kills, and placement when visible.
 
-Return JSON only with this shape:
-{
-  "summary": "short review summary",
-  "warnings": ["warning if any"],
-  "squads": [{
-    "squadId": "one supplied squadId",
-    "squadName": "registered squad name",
-    "screenshotSquadName": "name read or empty",
-    "placement": 1,
-    "confidence": 0.98,
-    "players": [{
-      "playerIndex": 0,
-      "registeredName": "registered IGN",
-      "screenshotName": "IGN read or empty",
-      "kills": 4,
-      "confidence": 0.97,
-      "nameMatch": "exact|similar|uncertain",
-      "applySuggestedName": false,
-      "note": "optional"
-    }]
-  }]
-}
+Fuzzy-match screenshot names to the registered roster. Small differences in capitalization, spaces, punctuation, superscripts, clan tags, and separators can still be the same player.
 
-Use null for unreadable kills or placement. Include only squads you can reasonably identify.`;
+Use squad context and teammates as evidence. Do not force ambiguous matches. Never invent values.
+
+Important:
+- Return only squads you can reasonably identify.
+- Use the supplied squadId exactly.
+- Use the registered squad name in squadName.
+- placement must be null when not visible.
+- kills must be null when not visible.
+- confidence must be from 0 to 1.
+- nameMatch must be exact, similar, or uncertain.
+- applySuggestedName=true only when the screenshot clearly shows a changed IGN and confidence is at least 0.90.
+- Do not calculate official tournament points.`;
 }
 
 function extractResponseText(payload: unknown) {
@@ -346,19 +455,14 @@ function parseJsonObject(value: string): unknown | null {
     }
 
     try {
-      return JSON.parse(
-        cleaned.slice(start, end + 1),
-      ) as unknown;
+      return JSON.parse(cleaned.slice(start, end + 1)) as unknown;
     } catch {
       return null;
     }
   }
 }
 
-function normalizeReview(
-  value: unknown,
-  squads: RequestSquad[],
-) {
+function normalizeReview(value: unknown, squads: RequestSquad[]) {
   const valueRecord = asRecord(value);
   const validSquads = new Map(
     squads.map((squad) => [squad.squadId, squad]),
@@ -376,29 +480,22 @@ function normalizeReview(
           ? candidate.squadId
           : "";
 
-      const registered =
-        validSquads.get(candidateSquadId);
+      const registered = validSquads.get(candidateSquadId);
 
       if (!registered) return null;
 
-      const candidatePlayers = Array.isArray(
-        candidate?.players,
-      )
+      const candidatePlayers = Array.isArray(candidate?.players)
         ? candidate.players
         : [];
 
       const players = candidatePlayers
         .map((playerValue) => {
           const player = asRecord(playerValue);
-          const playerIndex = Number(
-            player?.playerIndex,
-          );
+          const playerIndex = Number(player?.playerIndex);
 
-          const registeredPlayer =
-            registered.players.find(
-              (item) =>
-                item.playerIndex === playerIndex,
-            );
+          const registeredPlayer = registered.players.find(
+            (item) => item.playerIndex === playerIndex,
+          );
 
           if (!registeredPlayer) return null;
 
@@ -407,10 +504,7 @@ function normalizeReview(
               ? player.screenshotName.trim()
               : "";
 
-          const confidence = clamp01(
-            Number(player?.confidence),
-          );
-
+          const confidence = clamp01(Number(player?.confidence));
           const rawKills = player?.kills;
 
           return {
@@ -452,8 +546,7 @@ function normalizeReview(
         squadId: registered.squadId,
         squadName: registered.squadName,
         screenshotSquadName:
-          typeof candidate?.screenshotSquadName ===
-          "string"
+          typeof candidate?.screenshotSquadName === "string"
             ? candidate.screenshotSquadName
             : "",
         placement:
@@ -462,9 +555,7 @@ function normalizeReview(
           Number.isNaN(Number(rawPlacement))
             ? null
             : Math.max(1, Number(rawPlacement)),
-        confidence: clamp01(
-          Number(candidate?.confidence),
-        ),
+        confidence: clamp01(Number(candidate?.confidence)),
         players,
         note:
           typeof candidate?.note === "string"
@@ -496,9 +587,7 @@ function normalizeReview(
   };
 }
 
-function asRecord(
-  value: unknown,
-): UnknownRecord | null {
+function asRecord(value: unknown): UnknownRecord | null {
   if (
     value &&
     typeof value === "object" &&
@@ -510,10 +599,7 @@ function asRecord(
   return null;
 }
 
-function getNestedString(
-  value: unknown,
-  path: string[],
-) {
+function getNestedString(value: unknown, path: string[]) {
   let current: unknown = value;
 
   for (const key of path) {
