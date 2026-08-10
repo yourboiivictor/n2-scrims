@@ -13,7 +13,9 @@ type Standing = {
   id: string;
   squadId?: string;
   squadName: string;
-  logoUrl?: string;\n  countryCode?: string;\n  countryName?: string;
+  logoUrl?: string;
+  countryCode?: string;
+  countryName?: string;
   slot?: number;
   playerNames?: string[];
   playerKills?: number[];
@@ -30,7 +32,9 @@ type Standing = {
 export default function StandingsPage() {
   const [standings, setStandings] = useState<Standing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [squadCountries, setSquadCountries] = useState<Record<string, { countryCode: string; countryName: string }>>({});
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
+  >({});
   const [expandedSquadId, setExpandedSquadId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,17 +61,37 @@ export default function StandingsPage() {
   }, []);
 
   useEffect(() => {
-    return onSnapshot(query(collection(db, "squads")), (snapshot) => {
-      const countries: Record<string, { countryCode: string; countryName: string }> = {};
-      snapshot.docs.forEach((d) => {
-        const data = d.data();
-        countries[d.id] = {
-          countryCode: typeof data.countryCode === "string" ? data.countryCode : "",
-          countryName: typeof data.countryName === "string" ? data.countryName : "",
-        };
-      });
-      setSquadCountries(countries);
-    });
+    const unsubscribe = onSnapshot(
+      query(collection(db, "squads")),
+      (snapshot) => {
+        const countries: Record<
+          string,
+          { countryCode: string; countryName: string }
+        > = {};
+
+        snapshot.docs.forEach((squadDocument) => {
+          const data = squadDocument.data();
+
+          countries[squadDocument.id] = {
+            countryCode:
+              typeof data.countryCode === "string"
+                ? data.countryCode
+                : "",
+            countryName:
+              typeof data.countryName === "string"
+                ? data.countryName
+                : "",
+          };
+        });
+
+        setSquadCountries(countries);
+      },
+      (error) => {
+        console.error("Unable to load squad countries:", error);
+      },
+    );
+
+    return unsubscribe;
   }, []);
 
   const rankedStandings = useMemo(() => {
@@ -123,9 +147,13 @@ export default function StandingsPage() {
           <section className="mt-3 grid min-h-0 flex-1 grid-cols-2 items-start gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {rankedStandings.map((standing, index) => {
               const rank = index + 1;
-              const squadCountry = standing.squadId ? squadCountries[standing.squadId] : undefined;
-              const countryCode = squadCountry?.countryCode || standing.countryCode || "";
-              const countryName = squadCountry?.countryName || standing.countryName || "";
+              const squadCountry = standing.squadId
+                ? squadCountries[standing.squadId]
+                : undefined;
+              const countryCode =
+                squadCountry?.countryCode || standing.countryCode || "";
+              const countryName =
+                squadCountry?.countryName || standing.countryName || "";
               const isExpanded = expandedSquadId === standing.id;
               const playerStats = getPlayerStats(standing);
               const totalKills = Number(standing.totalKills) || 0;
@@ -184,11 +212,18 @@ export default function StandingsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-1.5">
                         {countryCode && (
-                          <span className="shrink-0 text-sm leading-none" title={countryName || countryCode}>
+                          <span
+                            className="shrink-0 text-sm leading-none"
+                            title={countryName || countryCode}
+                          >
                             {countryFlag(countryCode)}
                           </span>
                         )}
-                        <p className="truncate text-[11px] font-black leading-tight sm:text-xs" title={standing.squadName}>
+
+                        <p
+                          className="truncate text-[11px] font-black leading-tight sm:text-xs"
+                          title={standing.squadName}
+                        >
                           {standing.squadName}
                         </p>
                       </div>
@@ -318,6 +353,16 @@ function getPlayerStats(standing: Standing): { name: string; kills: number }[] {
   }
 
   return [];
+}
+
+function countryFlag(code: string) {
+  if (!/^[A-Za-z]{2}$/.test(code)) return "";
+
+  return code
+    .toUpperCase()
+    .replace(/./g, (character) =>
+      String.fromCodePoint(127397 + character.charCodeAt(0)),
+    );
 }
 
 function ScoreBox({
