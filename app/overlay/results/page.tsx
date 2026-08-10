@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "@/firebase";
+import { flagUrl } from "@/lib/countries";
 
 type LiveMatchSettings = {
   matchNumber: number;
@@ -48,6 +49,8 @@ type Standing = {
   squadId: string;
   squadName: string;
   logoUrl: string;
+  countryCode?: string;
+  countryName?: string;
   totalKills: number;
   totalPoints: number;
 };
@@ -71,6 +74,9 @@ export default function ResultsOverlayPage() {
 
   const [results, setResults] = useState<MatchResult[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
+  >({});
 
   useEffect(() => {
     return onSnapshot(
@@ -182,6 +188,34 @@ export default function ResultsOverlayPage() {
       },
     );
   }, [liveMatch.matchNumber]);
+
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, "squads"),
+      (snapshot) => {
+        const countries: Record<
+          string,
+          { countryCode: string; countryName: string }
+        > = {};
+
+        snapshot.docs.forEach((squadDocument) => {
+          const data = squadDocument.data();
+
+          countries[squadDocument.id] = {
+            countryCode:
+              typeof data.countryCode === "string" ? data.countryCode : "",
+            countryName:
+              typeof data.countryName === "string" ? data.countryName : "",
+          };
+        });
+
+        setSquadCountries(countries);
+      },
+      (error) => {
+        console.error("Unable to load squad countries:", error);
+      },
+    );
+  }, []);
 
   useEffect(() => {
     const standingsQuery = query(
@@ -439,8 +473,9 @@ export default function ResultsOverlayPage() {
               Top 10 Standings
             </h2>
 
-            <div className="mt-5 grid grid-cols-[42px_42px_minmax(0,1fr)_58px_64px] gap-2 border-b border-black/10 px-2 pb-2 text-[8px] font-black uppercase tracking-[0.14em] text-black">
+            <div className="mt-5 grid grid-cols-[42px_34px_42px_minmax(0,1fr)_58px_64px] gap-2 border-b border-black/10 px-2 pb-2 text-[8px] font-black uppercase tracking-[0.14em] text-black">
               <span>Rank</span>
+              <span />
               <span />
               <span>Team</span>
               <span className="text-center">Kills</span>
@@ -456,7 +491,13 @@ export default function ResultsOverlayPage() {
                 topTen.map((standing, index) => (
                   <StandingRow
                     key={standing.squadId}
-                    standing={standing}
+                    standing={{
+                      ...standing,
+                      countryCode:
+                        squadCountries[standing.squadId]?.countryCode || "",
+                      countryName:
+                        squadCountries[standing.squadId]?.countryName || "",
+                    }}
                     rank={index + 1}
                   />
                 ))
@@ -616,7 +657,7 @@ function StandingRow({
 
   return (
     <div
-      className={`grid grid-cols-[42px_42px_minmax(0,1fr)_58px_64px] items-center gap-2 border px-2 py-1.5 ${
+      className={`grid grid-cols-[42px_34px_42px_minmax(0,1fr)_58px_64px] items-center gap-2 border px-2 py-1.5 ${
         rank === 1
           ? "border-black/25 bg-neutral-100"
           : "border-black/10 bg-white"
@@ -626,6 +667,18 @@ function StandingRow({
         className={`flex h-8 w-8 items-center justify-center text-sm font-black ${rankStyle}`}
       >
         {rank}
+      </div>
+
+      <div className="flex h-8 w-8 items-center justify-center">
+        {standing.countryCode ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={flagUrl(standing.countryCode, 40)}
+            alt=""
+            title={standing.countryName || standing.countryCode}
+            className="h-4 w-7 rounded-sm object-cover shadow-sm"
+          />
+        ) : null}
       </div>
 
       <div className="flex h-8 w-8 items-center justify-center overflow-hidden border border-black bg-white">

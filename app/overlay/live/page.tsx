@@ -351,8 +351,9 @@ export default function LiveOverlayPage() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
-            <div className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+            <div className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
+              <span />
               <span />
               <span>Team</span>
               <span className="text-center">Kills</span>
@@ -425,12 +426,24 @@ function StandingRow({
 
   return (
     <div
-      className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+      className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
     >
       <div
         className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
       >
         {rank}
+      </div>
+
+      <div className="flex h-10 w-8 items-center justify-center">
+        {standing.countryCode ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={flagUrl(standing.countryCode, 40)}
+            alt=""
+            title={standing.countryName || standing.countryCode}
+            className="h-5 w-8 rounded-sm object-cover shadow-sm"
+          />
+        ) : null}
       </div>
 
       <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
@@ -448,19 +461,9 @@ function StandingRow({
         )}
       </div>
 
-      <div className="flex min-w-0 items-center gap-2">
-        {standing.countryCode && (
-          <img
-            src={flagUrl(standing.countryCode, 40)}
-            alt=""
-            title={standing.countryName || standing.countryCode}
-            className="h-4 w-6 shrink-0 rounded-sm object-cover"
-          />
-        )}
-        <p className="truncate text-[14px] font-black uppercase">
-          {standing.squadName}
-        </p>
-      </div>
+      <p className="truncate text-[14px] font-black uppercase">
+        {standing.squadName}
+      </p>
 
       <p className="text-center text-base font-black text-white">
         {standing.totalKills}
