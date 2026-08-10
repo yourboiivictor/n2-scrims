@@ -127,12 +127,20 @@ export default function LiveOverlayPage() {
         snapshot.docs.forEach((squadDocument) => {
           const data = squadDocument.data();
 
-          countries[squadDocument.id] = {
+          const country = {
             countryCode:
               typeof data.countryCode === "string" ? data.countryCode : "",
             countryName:
               typeof data.countryName === "string" ? data.countryName : "",
           };
+
+          // Keep both keys because a standings document ID may differ from
+          // the original squad document ID.
+          countries[squadDocument.id] = country;
+
+          if (typeof data.squadName === "string" && data.squadName.trim()) {
+            countries[`name:${data.squadName.trim().toLowerCase()}`] = country;
+          }
         });
 
         setSquadCountries(countries);
@@ -372,9 +380,17 @@ export default function LiveOverlayPage() {
                     standing={{
                       ...standing,
                       countryCode:
-                        squadCountries[standing.squadId]?.countryCode || "",
+                        squadCountries[standing.squadId]?.countryCode ||
+                        squadCountries[
+                          `name:${standing.squadName.trim().toLowerCase()}`
+                        ]?.countryCode ||
+                        "",
                       countryName:
-                        squadCountries[standing.squadId]?.countryName || "",
+                        squadCountries[standing.squadId]?.countryName ||
+                        squadCountries[
+                          `name:${standing.squadName.trim().toLowerCase()}`
+                        ]?.countryName ||
+                        "",
                     }}
                     rank={index + 1}
                   />
