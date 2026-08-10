@@ -689,10 +689,6 @@ export default function AdminPage() {
         logoPublicId = result.logoPublicId || "";
       }
 
-      const selectedCountry = COUNTRIES.find(
-        ([code]) => code === editCountryCode,
-      );
-
       const players = cleanPlayers.map((name, index) => ({
         name,
         role: index === 0 ? "Captain" : `Player ${index + 1}`,
@@ -844,6 +840,10 @@ export default function AdminPage() {
         logoUrl = result.logoUrl;
         logoPublicId = result.logoPublicId || "";
       }
+
+      const selectedCountry = COUNTRIES.find(
+        ([code]) => code === editCountryCode,
+      );
 
       const players = cleanPlayers.map((name, index) => ({
         name,
