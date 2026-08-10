@@ -1,0 +1,110 @@
+N2 SCRIMS - PAYPAL SUPPORT SUBSCRIPTIONS
+
+THIS ZIP IS AN ADD-ON / REPLACEMENT PACKAGE.
+It is not your full N2 Scrims project.
+
+FILES
+-----
+Replace:
+components/GlobalNavigation.tsx
+
+Add:
+app/support/page.tsx
+app/api/paypal/subscription/route.ts
+app/api/paypal/webhook/route.ts
+scripts/create-paypal-plans.mjs
+
+Reference:
+.env.paypal.example
+
+
+1) VERCEL ENVIRONMENT VARIABLES
+--------------------------------
+Add these to Production:
+
+PAYPAL_CLIENT_ID
+PAYPAL_CLIENT_SECRET
+PAYPAL_MODE
+
+Set:
+PAYPAL_MODE=live
+
+DO NOT put the Client Secret in source code.
+DO NOT prefix it with NEXT_PUBLIC_.
+
+
+2) CREATE THE THREE PAYPAL PLANS
+---------------------------------
+You can create the plans with the included script.
+
+For LOCAL PowerShell only, set your credentials temporarily:
+
+$env:PAYPAL_CLIENT_ID="YOUR_LIVE_CLIENT_ID"
+$env:PAYPAL_CLIENT_SECRET="YOUR_LIVE_SECRET"
+$env:PAYPAL_MODE="live"
+
+Then run from the project root:
+
+node scripts/create-paypal-plans.mjs
+
+The script will print:
+
+PAYPAL_PLAN_SUPPORTER=P-...
+PAYPAL_PLAN_ELITE=P-...
+PAYPAL_PLAN_VIP=P-...
+
+Add those three values to Vercel Production Environment Variables.
+
+Plans created:
+Supporter       $2.99/month
+Elite Supporter $5.99/month
+N2 VIP          $9.99/month
+
+
+3) DEPLOY
+---------
+git add .
+git commit -m "Add PayPal support subscriptions"
+git push origin main
+
+
+4) PAYPAL LIVE WEBHOOK
+----------------------
+After Vercel deploys, add a Live PayPal webhook:
+
+https://n2-scrims-hn9a.vercel.app/api/paypal/webhook
+
+Recommended subscription events:
+BILLING.SUBSCRIPTION.ACTIVATED
+BILLING.SUBSCRIPTION.CANCELLED
+BILLING.SUBSCRIPTION.SUSPENDED
+BILLING.SUBSCRIPTION.EXPIRED
+BILLING.SUBSCRIPTION.PAYMENT.FAILED
+PAYMENT.SALE.COMPLETED
+
+PayPal will give you a Webhook ID.
+
+Add that to Vercel as:
+
+PAYPAL_WEBHOOK_ID=YOUR_WEBHOOK_ID
+
+Redeploy after adding it.
+
+
+5) CURRENT VERSION
+------------------
+This version:
+- Adds a "Support N2" navigation button
+- Adds /support
+- Offers $2.99, $5.99, and $9.99 monthly plans
+- Sends subscribers to PayPal
+- Creates recurring PayPal subscriptions
+- Sends money to the PayPal Business account tied to your Live credentials
+- Includes a verified webhook endpoint
+
+This version DOES NOT YET:
+- automatically display supporter badges
+- save subscriber status to Firestore
+- provide a self-service cancellation page inside N2 Scrims
+
+Those can be added next once the basic payment flow is confirmed working.

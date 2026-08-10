@@ -20,8 +20,6 @@ export default function GlobalNavigation() {
     return onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setReady(true);
-
-      // Reset the button whenever Firebase auth changes.
       setSigningOut(false);
     });
   }, []);
@@ -31,6 +29,7 @@ export default function GlobalNavigation() {
   }
 
   const isHome = pathname === "/";
+  const isSupport = pathname.startsWith("/support");
   const isAdmin =
     user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
@@ -41,8 +40,6 @@ export default function GlobalNavigation() {
 
     try {
       await signOut(auth);
-
-      // Reset before navigation so the component cannot stay stuck.
       setSigningOut(false);
       router.replace("/");
       router.refresh();
@@ -54,7 +51,7 @@ export default function GlobalNavigation() {
 
   return (
     <div
-      className={`fixed top-4 z-[100] flex gap-2 ${
+      className={`fixed top-4 z-[100] flex flex-wrap gap-2 ${
         isHome ? "right-4" : "left-4"
       }`}
     >
@@ -70,6 +67,15 @@ export default function GlobalNavigation() {
         >
           ← Back
         </button>
+      )}
+
+      {!isSupport && (
+        <Link
+          href="/support"
+          className="rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-2.5 text-sm font-black text-fuchsia-200 backdrop-blur transition hover:bg-fuchsia-600 hover:text-white"
+        >
+          💜 Support N²
+        </Link>
       )}
 
       {isHome && ready && isAdmin && (
