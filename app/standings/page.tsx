@@ -13,7 +13,7 @@ type Standing = {
   id: string;
   squadId?: string;
   squadName: string;
-  logoUrl?: string;
+  logoUrl?: string;\n  countryCode?: string;\n  countryName?: string;
   slot?: number;
   playerNames?: string[];
   playerKills?: number[];
@@ -30,6 +30,7 @@ type Standing = {
 export default function StandingsPage() {
   const [standings, setStandings] = useState<Standing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [squadCountries, setSquadCountries] = useState<Record<string, { countryCode: string; countryName: string }>>({});
   const [expandedSquadId, setExpandedSquadId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +54,20 @@ export default function StandingsPage() {
     );
 
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(query(collection(db, "squads")), (snapshot) => {
+      const countries: Record<string, { countryCode: string; countryName: string }> = {};
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        countries[d.id] = {
+          countryCode: typeof data.countryCode === "string" ? data.countryCode : "",
+          countryName: typeof data.countryName === "string" ? data.countryName : "",
+        };
+      });
+      setSquadCountries(countries);
+    });
   }, []);
 
   const rankedStandings = useMemo(() => {
@@ -108,6 +123,9 @@ export default function StandingsPage() {
           <section className="mt-3 grid min-h-0 flex-1 grid-cols-2 items-start gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {rankedStandings.map((standing, index) => {
               const rank = index + 1;
+              const squadCountry = standing.squadId ? squadCountries[standing.squadId] : undefined;
+              const countryCode = squadCountry?.countryCode || standing.countryCode || "";
+              const countryName = squadCountry?.countryName || standing.countryName || "";
               const isExpanded = expandedSquadId === standing.id;
               const playerStats = getPlayerStats(standing);
               const totalKills = Number(standing.totalKills) || 0;
@@ -164,12 +182,16 @@ export default function StandingsPage() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate text-[11px] font-black leading-tight sm:text-xs"
-                        title={standing.squadName}
-                      >
-                        {standing.squadName}
-                      </p>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        {countryCode && (
+                          <span className="shrink-0 text-sm leading-none" title={countryName || countryCode}>
+                            {countryFlag(countryCode)}
+                          </span>
+                        )}
+                        <p className="truncate text-[11px] font-black leading-tight sm:text-xs" title={standing.squadName}>
+                          {standing.squadName}
+                        </p>
+                      </div>
 
                       <p className="mt-0.5 text-[8px] font-bold uppercase tracking-wide text-slate-500">
                         Slot {standing.slot || "-"}

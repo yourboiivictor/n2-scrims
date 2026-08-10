@@ -18,7 +18,25 @@ import { useRouter } from "next/navigation";
 import { auth, db } from "../../firebase";
 
 const MAX_SQUADS = 25;
-const MAX_LOGO_SIZE = 5 * 1024 * 1024;
+const MAX_LOGO_SIZE = 5 * 1024 * 1024;\n\nconst COUNTRIES = [
+  ["US","United States"],["CA","Canada"],["MX","Mexico"],["PH","Philippines"],
+  ["TO","Tonga"],["WS","Samoa"],["AS","American Samoa"],["FJ","Fiji"],
+  ["NZ","New Zealand"],["AU","Australia"],["JP","Japan"],["KR","South Korea"],
+  ["CN","China"],["TW","Taiwan"],["SG","Singapore"],["MY","Malaysia"],
+  ["ID","Indonesia"],["TH","Thailand"],["VN","Vietnam"],["IN","India"],
+  ["PK","Pakistan"],["AE","United Arab Emirates"],["SA","Saudi Arabia"],
+  ["GB","United Kingdom"],["FR","France"],["DE","Germany"],["ES","Spain"],
+  ["IT","Italy"],["BR","Brazil"],["AR","Argentina"],["CL","Chile"],
+  ["CO","Colombia"],["PE","Peru"],["PR","Puerto Rico"],["DO","Dominican Republic"],
+  ["JM","Jamaica"],["GU","Guam"],["MP","Northern Mariana Islands"],
+  ["PW","Palau"],["FM","Micronesia"],["MH","Marshall Islands"],
+  ["PG","Papua New Guinea"],["ZA","South Africa"],["NG","Nigeria"]
+] as const;
+
+function countryFlag(code: string) {
+  return code.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0)));
+}
+
 
 const ALLOWED_LOGO_TYPES = [
   "image/png",
@@ -54,7 +72,7 @@ export default function RegisterPage() {
     useState(true);
 
   const [squadName, setSquadName] = useState("");
-  const [facebookName, setFacebookName] = useState("");
+  const [facebookName, setFacebookName] = useState("");\n  const [countryCode, setCountryCode] = useState("");
   const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -335,6 +353,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!countryCode) {
+      setMessage("Please select your squad country or region.");
+      return;
+    }
+
     if (cleanPlayerNames.some((name) => !name)) {
       setMessage("Please enter all 4 player names.");
       return;
@@ -428,6 +451,8 @@ export default function RegisterPage() {
 
       setMessage("Saving squad registration...");
 
+      const selectedCountry = COUNTRIES.find(([code]) => code === countryCode);
+
       await addDoc(collection(db, "squads"), {
         squadName: cleanSquadName,
 
@@ -448,13 +473,15 @@ export default function RegisterPage() {
         ownerEmail: user.email || "",
         ownerName: user.displayName || "",
         facebookName: cleanFacebookName,
+        countryCode,
+        countryName: selectedCountry?.[1] || "",
 
         status: "pending",
         createdAt: serverTimestamp(),
       });
 
       setSquadName("");
-      setFacebookName("");
+      setFacebookName("");\n      setCountryCode("");
       setPlayerNames(["", "", "", ""]);
 
       removeLogo();
@@ -760,6 +787,27 @@ export default function RegisterPage() {
               disabled={submitting}
               className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
             />
+          </div>
+
+          <div className="mt-8">
+            <label htmlFor="country" className="block text-sm font-bold text-gray-300">
+              Squad Country / Region
+            </label>
+            <select
+              id="country"
+              value={countryCode}
+              onChange={(event) => setCountryCode(event.target.value)}
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-white outline-none focus:border-blue-500 disabled:opacity-60"
+            >
+              <option value="">Select country or region</option>
+              {COUNTRIES.map(([code, name]) => (
+                <option key={code} value={code}>{countryFlag(code)} {name}</option>
+              ))}
+            </select>
+            <p className="mt-2 text-sm text-gray-400">
+              This flag will represent your squad on the tournament standings.
+            </p>
           </div>
 
           <div className="mt-8">

@@ -22,6 +22,9 @@ export default function ResultsGraphicsPage() {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
   const [squadLogos, setSquadLogos] = useState<Record<string, string>>({});
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
+  >({});
 
   useEffect(() => {
     let active = true;
@@ -37,6 +40,10 @@ export default function ResultsGraphicsPage() {
         if (!active) return;
 
         const logos: Record<string, string> = {};
+        const countries: Record<
+          string,
+          { countryCode: string; countryName: string }
+        > = {};
 
         squadsSnapshot.docs.forEach((squadDocument) => {
           const data = squadDocument.data();
@@ -46,9 +53,17 @@ export default function ResultsGraphicsPage() {
           if (logoUrl) {
             logos[squadDocument.id] = logoUrl;
           }
+
+          countries[squadDocument.id] = {
+            countryCode:
+              typeof data.countryCode === "string" ? data.countryCode : "",
+            countryName:
+              typeof data.countryName === "string" ? data.countryName : "",
+          };
         });
 
         setSquadLogos(logos);
+        setSquadCountries(countries);
         setStandings(rows);
 
         if (snapshot.exists()) {
@@ -195,10 +210,21 @@ export default function ResultsGraphicsPage() {
         );
       }
 
+      const country = squadCountries[row.squadId];
+      const flag = countryFlag(country?.countryCode || "");
+
       ctx.textAlign = "left";
       ctx.fillStyle = "#ffffff";
-      ctx.font = "900 30px Arial";
-      ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
+
+      if (flag) {
+        ctx.font = "30px Arial";
+        ctx.fillText(flag, 295, y + 57);
+        ctx.font = "900 30px Arial";
+        ctx.fillText(row.squadName.slice(0, 18), 340, y + 57);
+      } else {
+        ctx.font = "900 30px Arial";
+        ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
+      }
 
       ctx.textAlign = "right";
       ctx.fillStyle = "#ffffff";
@@ -309,9 +335,27 @@ export default function ResultsGraphicsPage() {
                       )}
                     </div>
 
-                    <span className="truncate font-black">
-                      {row.squadName}
-                    </span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {countryFlag(
+                        squadCountries[row.squadId]?.countryCode || "",
+                      ) && (
+                        <span
+                          className="shrink-0 text-lg leading-none"
+                          title={
+                            squadCountries[row.squadId]?.countryName ||
+                            squadCountries[row.squadId]?.countryCode
+                          }
+                        >
+                          {countryFlag(
+                            squadCountries[row.squadId]?.countryCode || "",
+                          )}
+                        </span>
+                      )}
+
+                      <span className="truncate font-black">
+                        {row.squadName}
+                      </span>
+                    </div>
                   </div>
 
                   <span className="font-black text-white">
@@ -353,53 +397,16 @@ export default function ResultsGraphicsPage() {
 }
 
 
-function drawPolynesianPattern(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,0.055)";
-  ctx.lineWidth = 5;
 
-  const cell = 120;
+function countryFlag(code: string) {
+  if (!/^[A-Za-z]{2}$/.test(code)) return "";
 
-  for (let y = 500; y < height - 90; y += cell) {
-    for (let x = -cell; x < width + cell; x += cell) {
-      const offsetX = ((Math.floor(y / cell) % 2) * cell) / 2;
-      const cx = x + offsetX;
-      const cy = y;
-
-      // Repeating spear/chevron motif.
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + 55);
-      ctx.lineTo(cx + 30, cy + 20);
-      ctx.lineTo(cx + 60, cy + 55);
-      ctx.lineTo(cx + 90, cy + 20);
-      ctx.lineTo(cx + 120, cy + 55);
-      ctx.stroke();
-
-      // Diamond motif.
-      ctx.beginPath();
-      ctx.moveTo(cx + 30, cy + 78);
-      ctx.lineTo(cx + 60, cy + 58);
-      ctx.lineTo(cx + 90, cy + 78);
-      ctx.lineTo(cx + 60, cy + 98);
-      ctx.closePath();
-      ctx.stroke();
-
-      // Small stepped marks.
-      ctx.beginPath();
-      ctx.moveTo(cx + 8, cy + 104);
-      ctx.lineTo(cx + 20, cy + 92);
-      ctx.lineTo(cx + 32, cy + 104);
-      ctx.stroke();
-    }
-  }
-
-  ctx.restore();
+  return code
+    .toUpperCase()
+    .replace(/./g, (character) =>
+      String.fromCodePoint(127397 + character.charCodeAt(0)),
+    );
 }
-
 
 function loadCanvasImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
