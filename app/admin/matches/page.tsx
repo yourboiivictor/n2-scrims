@@ -34,6 +34,9 @@ import {
   MatchScheduleItem,
   TournamentSettings,
 } from "@/lib/tournamentClient";
+import AIMatchReview, {
+  type AiReviewSquad,
+} from "@/components/admin/AIMatchReview";
 
 const OWNER_EMAIL = "victornicetry2@gmail.com";
 type SquadPlayer = {
@@ -563,6 +566,64 @@ return {};
           : player,
       ),
     }));
+  };
+
+  const changePlayerName = (
+    squadId: string,
+    playerIndex: number,
+    value: string,
+  ) => {
+    updateSquad(squadId, (current) => ({
+      ...current,
+      players: current.players.map((player, index) =>
+        index === playerIndex ? { ...player, name: value } : player,
+      ),
+    }));
+  };
+
+  const applyAiReviewSquad = (review: AiReviewSquad) => {
+    if (liveSettings.status !== "live") {
+      setMessage("Start the match before applying AI screenshot corrections.");
+      return;
+    }
+
+    const current = liveSquads[review.squadId];
+    if (!current) {
+      setMessage(`AI matched ${review.squadName}, but that squad is not loaded in the current match.`);
+      return;
+    }
+
+    updateSquad(
+      review.squadId,
+      (squad) => ({
+        ...squad,
+        placement:
+          typeof review.placement === "number" && review.placement > 0
+            ? review.placement
+            : squad.placement,
+        players: squad.players.map((player, playerIndex) => {
+          const aiPlayer = review.players.find(
+            (candidate) => candidate.playerIndex === playerIndex,
+          );
+          if (!aiPlayer) return player;
+
+          return {
+            ...player,
+            name:
+              aiPlayer.applySuggestedName && aiPlayer.screenshotName.trim()
+                ? aiPlayer.screenshotName.trim()
+                : player.name,
+            kills:
+              typeof aiPlayer.kills === "number"
+                ? Math.max(0, aiPlayer.kills)
+                : player.kills,
+          };
+        }),
+      }),
+      true,
+    );
+
+    setMessage(`Applied AI review to ${review.squadName}. Verify the squad card before finalizing.`);
   };
 
   const togglePlayerAlive = (
@@ -1926,6 +1987,24 @@ return {};
           )}
         </header>
 
+        <AIMatchReview
+          matchNumber={liveSettings.matchNumber}
+          matchStatus={liveSettings.status}
+          killPointValue={killPointValue}
+          squads={liveSquadList.map((squad) => ({
+            squadId: squad.squadId,
+            squadName: squad.squadName,
+            slot: squad.slot,
+            placement: squad.placement,
+            players: squad.players.map((player, playerIndex) => ({
+              playerIndex,
+              name: player.name,
+              kills: player.kills,
+            })),
+          }))}
+          onApplySquad={applyAiReviewSquad}
+        />
+
         {showPreviousMatches && (
           <section className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -2140,6 +2219,13 @@ return {};
                     value,
                   )
                 }
+                onNameChange={(playerIndex, value) =>
+                  changePlayerName(
+                    squad.squadId,
+                    playerIndex,
+                    value,
+                  )
+                }
                 onKillsChange={(
                   playerIndex,
                   value,
@@ -2201,6 +2287,7 @@ function SquadCard({
   disabled,
   isSaving,
   onPlacementChange,
+  onNameChange,
   onKillsChange,
   onToggleAlive,
 }: {
@@ -2208,6 +2295,10 @@ function SquadCard({
   disabled: boolean;
   isSaving: boolean;
   onPlacementChange: (value: string) => void;
+  onNameChange: (
+    playerIndex: number,
+    value: string,
+  ) => void;
   onKillsChange: (
     playerIndex: number,
     value: number,
@@ -2286,9 +2377,16 @@ function SquadCard({
               key={`${squad.squadId}-${playerIndex}`}
               className="grid grid-cols-[minmax(0,1fr)_52px_64px] items-center gap-2"
             >
-              <p className="truncate text-xs font-medium">
-                {player.name}
-              </p>
+              <input
+                type="text"
+                value={player.name}
+                disabled={disabled}
+                onChange={(event) =>
+                  onNameChange(playerIndex, event.target.value)
+                }
+                className="h-7 min-w-0 rounded-md border border-white/10 bg-slate-950 px-2 text-xs font-medium outline-none focus:border-violet-400 disabled:opacity-50"
+                aria-label={`Player ${playerIndex + 1} name`}
+              />
 
               <input
                 type="number"
