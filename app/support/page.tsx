@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
 type TierId = "supporter" | "elite" | "vip";
 
@@ -23,7 +23,7 @@ const TIERS: Tier[] = [
     benefits: [
       "Monthly support for N² Scrims",
       "Supporter recognition",
-      "Helps cover hosting and AI match review costs",
+      "Helps cover hosting and match review costs",
     ],
   },
   {
@@ -52,22 +52,6 @@ const TIERS: Tier[] = [
 ];
 
 export default function SupportPage() {
-  return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
-          <div className="rounded-2xl border border-white/10 bg-slate-900 px-6 py-5 text-sm font-bold text-slate-300">
-            Loading support page...
-          </div>
-        </main>
-      }
-    >
-      <SupportPageContent />
-    </Suspense>
-  );
-}
-
-function SupportPageContent() {
   const searchParams = useSearchParams();
   const [loadingTier, setLoadingTier] = useState<TierId | null>(null);
   const [message, setMessage] = useState("");
@@ -95,7 +79,7 @@ function SupportPageContent() {
         );
       }
 
-      window.location.assign(payload.approvalUrl);
+      window.location.href = payload.approvalUrl;
     } catch (error) {
       console.error(error);
       setMessage(
@@ -120,7 +104,7 @@ function SupportPageContent() {
           </h1>
 
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-            Monthly support helps cover website hosting, AI screenshot review,
+            Monthly support helps cover website hosting, screenshot review,
             tournament graphics, broadcasts, prizes, and future upgrades.
           </p>
         </section>
