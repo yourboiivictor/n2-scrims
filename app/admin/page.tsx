@@ -841,14 +841,14 @@ export default function AdminPage() {
         logoPublicId = result.logoPublicId || "";
       }
 
-      const selectedCountry = COUNTRIES.find(
-        ([code]) => code === editCountryCode,
-      );
-
       const players = cleanPlayers.map((name, index) => ({
         name,
         role: index === 0 ? "Captain" : `Player ${index + 1}`,
       }));
+
+      const selectedCountry = COUNTRIES.find(
+        ([code]) => code === editCountryCode,
+      );
 
       await updateDoc(doc(db, "squads", editingSquad.id), {
         squadName: cleanSquadName,
