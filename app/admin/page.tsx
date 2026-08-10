@@ -698,8 +698,6 @@ export default function AdminPage() {
         squadName: cleanSquadName,
         squadNameLower: cleanSquadName.toLowerCase(),
         facebookName: cleanFacebookName,
-        countryCode: editCountryCode,
-        countryName: selectedCountry?.[1] || "",
         players,
         logoUrl,
         logoPublicId,
@@ -749,8 +747,6 @@ export default function AdminPage() {
     if (savingEdit) return;
     setEditingSquad(null);
     setEditLogoFile(null);
-    setEditCountrySearch("");
-    setEditCountryCode("");
     setEditLogoPreview("");
     setRemoveCurrentLogo(false);
   }
@@ -854,6 +850,8 @@ export default function AdminPage() {
         squadName: cleanSquadName,
         squadNameLower: cleanSquadName.toLowerCase(),
         facebookName: cleanFacebookName,
+        countryCode: editCountryCode,
+        countryName: selectedCountry?.[1] || "",
         players,
         logoUrl,
         logoPublicId,
@@ -1293,7 +1291,8 @@ export default function AdminPage() {
                         <td className="px-3 py-3 text-xs">
                           {squad.countryCode ? (
                             <span className="font-bold">
-                              {countryFlag(squad.countryCode)} {squad.countryName || squad.countryCode}
+                              {countryFlag(squad.countryCode)}{" "}
+                              {squad.countryName || squad.countryCode}
                             </span>
                           ) : (
                             "—"
