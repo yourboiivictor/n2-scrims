@@ -54,6 +54,7 @@ export default function AIMatchReview({
   const [files, setFiles] = useState<File[]>([]);
   const [review, setReview] = useState<ReviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [message, setMessage] = useState("");
 
   const canReview = files.length > 0 && squads.length > 0 && !loading;
@@ -95,6 +96,26 @@ export default function AIMatchReview({
       setMessage(error instanceof Error ? error.message : "Unable to analyze screenshots.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function applyAllToMatch() {
+    if (!review || matchStatus !== "live" || applying) return;
+    setApplying(true);
+    setMessage("");
+    try {
+      for (const squad of review.squads) {
+        if (!currentLookup.has(squad.squadId)) continue;
+        await Promise.resolve(onApplySquad(squad));
+      }
+      setReview(null);
+      setFiles([]);
+      setMessage("AI results applied to the match.");
+    } catch (error) {
+      console.error(error);
+      setMessage(error instanceof Error ? error.message : "Unable to apply AI results to the match.");
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -166,14 +187,25 @@ export default function AIMatchReview({
       {review && (
         <div className="mt-4 space-y-3">
           <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-            <p className="font-black">{review.summary}</p>
-            {review.warnings.map((warning, index) => (
-              <p key={`${warning}-${index}`} className="mt-1 text-xs text-yellow-200">⚠ {warning}</p>
-            ))}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-black">{review.summary}</p>
+                {review.warnings.map((warning, index) => (
+                  <p key={`${warning}-${index}`} className="mt-1 text-xs text-yellow-200">⚠ {warning}</p>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={matchStatus !== "live" || applying || review.squads.length === 0}
+                onClick={() => void applyAllToMatch()}
+                className="rounded-lg bg-white px-5 py-2.5 text-xs font-black text-black disabled:opacity-40"
+              >
+                {applying ? "Applying..." : "Apply All to Match"}
+              </button>
+            </div>
           </div>
 
           {review.squads.map((squad) => {
-            const current = currentLookup.get(squad.squadId);
             return (
               <article key={squad.squadId} className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -184,12 +216,6 @@ export default function AIMatchReview({
                       {typeof squad.placement === "number" ? ` • Placement ${squad.placement}` : ""}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!current || matchStatus !== "live"}
-                    onClick={() => onApplySquad(squad)}
-                    className="rounded-lg bg-white px-4 py-2 text-xs font-black text-black disabled:opacity-40"
-                  >Apply to Match</button>
                 </div>
 
                 <div className="mt-3 overflow-x-auto">
