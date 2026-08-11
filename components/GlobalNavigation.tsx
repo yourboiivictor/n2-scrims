@@ -72,9 +72,9 @@ export default function GlobalNavigation() {
       {!isSupport && (
         <Link
           href="/support"
-          className="rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-2.5 text-sm font-black text-fuchsia-200 backdrop-blur transition hover:bg-fuchsia-600 hover:text-white"
+          className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-sm font-black text-amber-300 backdrop-blur transition hover:bg-amber-400 hover:text-black"
         >
-          💜 Support N²
+          ★ Support N²
         </Link>
       )}
 

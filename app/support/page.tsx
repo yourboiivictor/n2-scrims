@@ -111,13 +111,18 @@ function SupportPageContent() {
     <main className="min-h-screen bg-slate-950 px-4 py-24 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <section className="text-center">
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-fuchsia-300">
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-amber-300">
             N² Scrims Community
           </p>
 
-          <h1 className="mt-4 text-4xl font-black sm:text-5xl">
-            💜 Support N² Scrims
-          </h1>
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-400/10 text-sm font-black text-amber-300">
+              N²
+            </div>
+            <h1 className="text-4xl font-black sm:text-5xl">
+              Support N² Scrims
+            </h1>
+          </div>
 
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
             Monthly support helps cover website hosting, screenshot review,
@@ -149,12 +154,12 @@ function SupportPageContent() {
               key={tier.id}
               className={`relative rounded-3xl border p-6 ${
                 tier.featured
-                  ? "border-fuchsia-400/50 bg-fuchsia-500/10 shadow-2xl shadow-fuchsia-950/30"
+                  ? "border-amber-400/50 bg-amber-500/10 shadow-2xl shadow-amber-950/30"
                   : "border-white/10 bg-slate-900"
               }`}
             >
               {tier.featured && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-fuchsia-500 px-4 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-4 py-1 text-[10px] font-black uppercase tracking-wider text-black">
                   Most Popular
                 </span>
               )}
@@ -172,7 +177,7 @@ function SupportPageContent() {
               <ul className="mt-6 space-y-3 text-sm text-slate-300">
                 {tier.benefits.map((benefit) => (
                   <li key={benefit} className="flex gap-2">
-                    <span className="text-fuchsia-300">✓</span>
+                    <span className="text-amber-300">✓</span>
                     <span>{benefit}</span>
                   </li>
                 ))}
@@ -184,7 +189,7 @@ function SupportPageContent() {
                 disabled={loadingTier !== null}
                 className={`mt-8 w-full rounded-xl px-5 py-3.5 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   tier.featured
-                    ? "bg-fuchsia-500 text-white hover:bg-fuchsia-400"
+                    ? "bg-amber-400 text-black hover:bg-amber-300"
                     : "bg-white text-black hover:bg-slate-200"
                 }`}
               >
