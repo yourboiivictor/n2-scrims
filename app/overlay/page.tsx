@@ -9,7 +9,6 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { db } from "@/firebase";
-import { embeddedFlagUrl } from "@/lib/embeddedFlags";
 
 type LiveMatchSettings = {
   matchNumber: number;
@@ -400,8 +399,80 @@ function normalizeSquadName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function flagUrl(code: string) {
-  return embeddedFlagUrl(code);
+
+function CountryFlagSvg({ code, label }: { code: string; label: string }) {
+  const c = code.trim().toUpperCase();
+
+  const common = {
+    width: 32,
+    height: 20,
+    viewBox: "0 0 32 20",
+    role: "img" as const,
+    "aria-label": label,
+    className: "h-5 w-8 rounded-sm shadow-sm",
+  };
+
+  if (c === "KI") {
+    return (
+      <svg {...common}>
+        <rect width="32" height="10" fill="#CE1126" />
+        <rect y="10" width="32" height="10" fill="#003F87" />
+        <path d="M0 11 C4 9 8 13 12 11 S20 9 24 11 S28 13 32 11 V13 C28 15 24 11 20 13 S12 15 8 13 S4 11 0 13Z" fill="#fff" />
+        <path d="M0 15 C4 13 8 17 12 15 S20 13 24 15 S28 17 32 15 V17 C28 19 24 15 20 17 S12 19 8 17 S4 15 0 17Z" fill="#fff" />
+        <circle cx="16" cy="7" r="3" fill="#FCD116" />
+        <path d="M16 1.8 L16.7 4.3 L19.2 3.6 L17.6 5.6 L20 6.5 L17.4 6.8 L18.6 9 L16.6 7.5 L16 10 L15.4 7.5 L13.4 9 L14.6 6.8 L12 6.5 L14.4 5.6 L12.8 3.6 L15.3 4.3Z" fill="#FCD116" />
+      </svg>
+    );
+  }
+
+  if (c === "TO") {
+    return (
+      <svg {...common}>
+        <rect width="32" height="20" fill="#C10000" />
+        <rect width="14" height="9" fill="#fff" />
+        <rect x="5.5" y="1" width="3" height="7" fill="#C10000" />
+        <rect x="3.5" y="3" width="7" height="3" fill="#C10000" />
+      </svg>
+    );
+  }
+
+  if (c === "SB") {
+    return (
+      <svg {...common}>
+        <polygon points="0,0 32,0 0,20" fill="#0051BA" />
+        <polygon points="32,0 32,20 0,20" fill="#215B33" />
+        <polygon points="0,17 28,0 32,0 0,20" fill="#FCD116" />
+        {[3,7,11,5,9].map((x, i) => (
+          <circle key={i} cx={x} cy={i < 3 ? 3 : 7} r="0.8" fill="#fff" />
+        ))}
+      </svg>
+    );
+  }
+
+  if (c === "US") {
+    return (
+      <svg {...common}>
+        {Array.from({ length: 13 }).map((_, i) => (
+          <rect key={i} y={(20 / 13) * i} width="32" height={20 / 13} fill={i % 2 === 0 ? "#B22234" : "#fff"} />
+        ))}
+        <rect width="13" height="10.8" fill="#3C3B6E" />
+        {Array.from({ length: 12 }).map((_, i) => (
+          <circle key={i} cx={1.5 + (i % 4) * 3} cy={1.5 + Math.floor(i / 4) * 3} r="0.45" fill="#fff" />
+        ))}
+      </svg>
+    );
+  }
+
+  // Generic inline-SVG fallback so TikTok still receives SVG markup, not an image.
+  return (
+    <svg {...common}>
+      <rect width="32" height="20" fill="#111827" />
+      <rect x="1" y="1" width="30" height="18" fill="none" stroke="#fff" strokeOpacity="0.5" />
+      <text x="16" y="13" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff">
+        {c}
+      </text>
+    </svg>
+  );
 }
 
 function InfoBox({
@@ -451,13 +522,9 @@ function StandingRow({
 
       <div className="flex h-10 w-8 items-center justify-center">
         {standing.countryCode ? (
-          <div
-            title={standing.countryName || standing.countryCode}
-            aria-label={standing.countryName || standing.countryCode}
-            className="h-5 w-8 rounded-sm bg-cover bg-center bg-no-repeat shadow-sm"
-            style={{
-              backgroundImage: `url("${flagUrl(standing.countryCode)}")`,
-            }}
+          <CountryFlagSvg
+            code={standing.countryCode}
+            label={standing.countryName || standing.countryCode}
           />
         ) : null}
       </div>
