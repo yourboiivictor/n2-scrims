@@ -61,11 +61,6 @@ export default function LiveOverlayPage() {
     useState<TournamentSettings>(defaultTournament);
 
   const [standings, setStandings] = useState<Standing[]>([]);
-  const [flagDataUrls, setFlagDataUrls] = useState<Record<string, string>>({});
-  const [squadCountries, setSquadCountries] = useState<
-    Record<string, { countryCode: string; countryName: string; flagUrl: string }>
-  >({});
-
   useEffect(() => {
     return onSnapshot(
       doc(db, "settings", "liveMatch"),
@@ -116,34 +111,6 @@ export default function LiveOverlayPage() {
     );
   }, []);
 
-  useEffect(() => {
-    return onSnapshot(collection(db, "squads"), (snapshot) => {
-      const countries: Record<
-        string,
-        { countryCode: string; countryName: string; flagUrl: string }
-      > = {};
-
-      snapshot.docs.forEach((squadDocument) => {
-        const data = squadDocument.data();
-        const country = {
-          countryCode:
-            typeof data.countryCode === "string" ? data.countryCode : "",
-          countryName:
-            typeof data.countryName === "string" ? data.countryName : "",
-          flagUrl:
-            typeof data.flagUrl === "string" ? data.flagUrl : "",
-        };
-
-        countries[squadDocument.id] = country;
-
-        if (typeof data.squadName === "string" && data.squadName.trim()) {
-          countries[`name:${normalizeSquadName(data.squadName)}`] = country;
-        }
-      });
-
-      setSquadCountries(countries);
-    });
-  }, []);
 
   useEffect(() => {
     const standingsQuery = query(
@@ -165,6 +132,12 @@ export default function LiveOverlayPage() {
                 : "Unnamed Squad",
             logoUrl:
               typeof data.logoUrl === "string" ? data.logoUrl : "",
+            countryCode:
+              typeof data.countryCode === "string" ? data.countryCode : "",
+            countryName:
+              typeof data.countryName === "string" ? data.countryName : "",
+            flagUrl:
+              typeof data.flagUrl === "string" ? data.flagUrl : "",
             totalKills: Number(data.totalKills) || 0,
             totalPoints: Number(data.totalPoints) || 0,
           };
@@ -189,53 +162,6 @@ export default function LiveOverlayPage() {
       },
     );
   }, []);
-
-  useEffect(() => {
-    const countryCodes = Array.from(
-      new Set(
-        Object.values(squadCountries)
-          .map((country) => country.countryCode.trim().toLowerCase())
-          .filter(Boolean),
-      ),
-    );
-
-    countryCodes.forEach((countryCode) => {
-      if (flagDataUrls[countryCode]) return;
-
-      fetch(`/api/country-flag/${encodeURIComponent(countryCode)}`, {
-        cache: "force-cache",
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`Flag request failed: ${response.status}`);
-          }
-
-          return response.blob();
-        })
-        .then(
-          (blob) =>
-            new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () =>
-                typeof reader.result === "string"
-                  ? resolve(reader.result)
-                  : reject(new Error("Unable to convert flag to data URL"));
-              reader.onerror = () => reject(reader.error);
-              reader.readAsDataURL(blob);
-            }),
-        )
-        .then((dataUrl) => {
-          setFlagDataUrls((current) =>
-            current[countryCode]
-              ? current
-              : { ...current, [countryCode]: dataUrl },
-          );
-        })
-        .catch((error) => {
-          console.error(`Unable to embed flag ${countryCode}:`, error);
-        });
-    });
-  }, [squadCountries, flagDataUrls]);
 
   const scheduledMatch =
     tournament.matchSchedule?.[liveMatch.matchNumber - 1];
@@ -418,33 +344,7 @@ export default function LiveOverlayPage() {
                 visibleStandings.map((standing, index) => (
                   <StandingRow
                     key={standing.squadId}
-                    standing={{
-                      ...standing,
-                      countryCode:
-                        squadCountries[standing.squadId]?.countryCode ||
-                        squadCountries[
-                          `name:${normalizeSquadName(standing.squadName)}`
-                        ]?.countryCode ||
-                        "",
-                      countryName:
-                        squadCountries[standing.squadId]?.countryName ||
-                        squadCountries[
-                          `name:${normalizeSquadName(standing.squadName)}`
-                        ]?.countryName ||
-                        "",
-                      flagUrl: (() => {
-                        const countryCode =
-                          squadCountries[standing.squadId]?.countryCode ||
-                          squadCountries[
-                            `name:${normalizeSquadName(standing.squadName)}`
-                          ]?.countryCode ||
-                          "";
-
-                        return (
-                          flagDataUrls[countryCode.trim().toLowerCase()] || ""
-                        );
-                      })(),
-                    }}
+                    standing={standing}
                     rank={index + 1}
                   />
                 ))
@@ -509,16 +409,16 @@ function StandingRow({
       </div>
 
       <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
-        {standing.flagUrl ? (
+        {standing.countryCode ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={standing.flagUrl}
-            alt={standing.countryName || standing.countryCode || "Country flag"}
+            src={`/api/country-flag/${encodeURIComponent(standing.countryCode.trim().toLowerCase())}`}
+            alt={standing.countryName || `${standing.countryCode} flag`}
             className="h-full w-full object-contain p-1"
           />
         ) : (
           <span className="text-[6px] font-black text-black">
-            {standing.countryCode ? "..." : "FLAG"}
+            FLAG
           </span>
         )}
       </div>
