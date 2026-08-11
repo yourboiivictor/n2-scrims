@@ -61,6 +61,9 @@ export default function LiveOverlayPage() {
     useState<TournamentSettings>(defaultTournament);
 
   const [standings, setStandings] = useState<Standing[]>([]);
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
+  >({});
   useEffect(() => {
     return onSnapshot(
       doc(db, "settings", "liveMatch"),
@@ -113,6 +116,34 @@ export default function LiveOverlayPage() {
 
 
   useEffect(() => {
+    return onSnapshot(
+      collection(db, "squads"),
+      (snapshot) => {
+        const countries: Record<
+          string,
+          { countryCode: string; countryName: string }
+        > = {};
+
+        snapshot.docs.forEach((squadDocument) => {
+          const data = squadDocument.data();
+
+          countries[squadDocument.id] = {
+            countryCode:
+              typeof data.countryCode === "string" ? data.countryCode : "",
+            countryName:
+              typeof data.countryName === "string" ? data.countryName : "",
+          };
+        });
+
+        setSquadCountries(countries);
+      },
+      (error) => {
+        console.error("Unable to load squad countries:", error);
+      },
+    );
+  }, []);
+
+  useEffect(() => {
     const standingsQuery = query(
       collection(db, "standings"),
       orderBy("totalPoints", "desc"),
@@ -125,7 +156,10 @@ export default function LiveOverlayPage() {
           const data = standingDocument.data();
 
           return {
-            squadId: standingDocument.id,
+            squadId:
+              typeof data.squadId === "string" && data.squadId
+                ? data.squadId
+                : standingDocument.id,
             squadName:
               typeof data.squadName === "string"
                 ? data.squadName
@@ -343,8 +377,18 @@ export default function LiveOverlayPage() {
               ) : (
                 visibleStandings.map((standing, index) => (
                   <StandingRow
-                    key={standing.squadId}
-                    standing={standing}
+                    key={`${standing.squadId}-${index}`}
+                    standing={{
+                      ...standing,
+                      countryCode:
+                        standing.countryCode ||
+                        squadCountries[standing.squadId]?.countryCode ||
+                        "",
+                      countryName:
+                        standing.countryName ||
+                        squadCountries[standing.squadId]?.countryName ||
+                        "",
+                    }}
                     rank={index + 1}
                   />
                 ))
