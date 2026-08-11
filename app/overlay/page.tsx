@@ -349,8 +349,9 @@ export default function LiveOverlayPage() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
-            <div className="grid grid-cols-[42px_86px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+            <div className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
+              <span />
               <span />
               <span>Team</span>
               <span className="text-center">Kills</span>
@@ -400,80 +401,127 @@ function normalizeSquadName(name: string) {
 
 
 
-function TeamIdentityImage({
-  countryCode,
-  countryName,
-  logoUrl,
-  squadName,
+function RasterStandingRow({
+  standing,
+  rank,
+  rankStyle,
 }: {
-  countryCode: string;
-  countryName: string;
-  logoUrl: string;
-  squadName: string;
+  standing: Standing;
+  rank: number;
+  rankStyle: string;
 }) {
   const [src, setSrc] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
-    async function buildImage() {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = 172;
-        canvas.height = 80;
+    async function renderRow() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 760;
+      canvas.height = 92;
 
-        const ctx = canvas.getContext("2d");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-        if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Row background / border
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
 
-        // Flag box
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, 64, 80);
+      // Rank box
+      if (rank === 1) {
+        ctx.fillStyle = "#facc15";
+      } else if (rank === 2) {
+        ctx.fillStyle = "#e2e8f0";
+      } else {
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+      }
+      ctx.fillRect(14, 18, 54, 54);
 
-        const cleanCode = countryCode.trim().toLowerCase();
+      ctx.fillStyle = rank === 1 ? "#422006" : "#ffffff";
+      ctx.font = "900 26px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(rank), 41, 45);
 
-        if (/^[a-z]{2}$/.test(cleanCode)) {
-          drawFlagOnCanvas(ctx, cleanCode.toUpperCase(), 4, 14, 56, 52);
+      // Flag box + drawn flag
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(84, 14, 64, 64);
+      if (standing.countryCode) {
+        drawFlagOnCanvas(
+          ctx,
+          standing.countryCode.trim().toUpperCase(),
+          88,
+          22,
+          56,
+          48,
+        );
+      }
+
+      // Logo box
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(162, 14, 64, 64);
+
+      if (standing.logoUrl) {
+        try {
+          const logo = await loadImageForCanvas(standing.logoUrl);
+          drawContained(ctx, logo, 166, 18, 56, 56);
+        } catch {
+          ctx.fillStyle = "#111827";
+          ctx.font = "700 12px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("LOGO", 194, 46);
         }
+      }
 
-        // Logo box
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(72, 0, 80, 80);
+      // Team name
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "900 24px Arial";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      const team =
+        standing.squadName.length > 20
+          ? `${standing.squadName.slice(0, 19)}…`
+          : standing.squadName;
+      ctx.fillText(team.toUpperCase(), 246, 46);
 
-        if (logoUrl) {
-          try {
-            const logo = await loadImageForCanvas(logoUrl);
-            drawContained(ctx, logo, 76, 4, 72, 72);
-          } catch {
-            ctx.fillStyle = "#111827";
-            ctx.font = "700 12px Arial";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("LOGO", 112, 40);
-          }
-        }
+      // Kills
+      ctx.textAlign = "center";
+      ctx.font = "900 25px Arial";
+      ctx.fillText(String(standing.totalKills), 635, 46);
 
-        if (!cancelled) {
-          setSrc(canvas.toDataURL("image/png"));
-        }
-      } catch (error) {
-        console.error("Unable to build team identity image:", error);
+      // Total
+      ctx.font = "900 28px Arial";
+      ctx.fillText(String(standing.totalPoints), 716, 46);
+
+      if (!cancelled) {
+        setSrc(canvas.toDataURL("image/png"));
       }
     }
 
-    buildImage();
+    renderRow().catch((error) => {
+      console.error("Unable to rasterize standings row:", error);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [countryCode, logoUrl]);
+  }, [
+    standing.countryCode,
+    standing.logoUrl,
+    standing.squadName,
+    standing.totalKills,
+    standing.totalPoints,
+    rank,
+  ]);
 
   if (!src) {
-    return (
-      <div className="h-10 w-[86px]" aria-label={`${countryName} ${squadName}`} />
-    );
+    return <div className="h-[56px] w-full" />;
   }
 
   return (
@@ -481,12 +529,10 @@ function TeamIdentityImage({
     <img
       src={src}
       alt=""
-      title={[countryName, squadName].filter(Boolean).join(" • ")}
-      className="h-10 w-[86px] object-contain"
+      className="block h-[56px] w-full object-fill"
     />
   );
 }
-
 
 function drawFlagOnCanvas(
   ctx: CanvasRenderingContext2D,
@@ -501,7 +547,6 @@ function drawFlagOnCanvas(
   ctx.rect(x, y, width, height);
   ctx.clip();
 
-  // Kiribati
   if (code === "KI") {
     ctx.fillStyle = "#CE1126";
     ctx.fillRect(x, y, width, height / 2);
@@ -516,7 +561,8 @@ function drawFlagOnCanvas(
       ctx.moveTo(x, baseY);
       for (let i = 0; i <= 8; i += 1) {
         const px = x + (width / 8) * i;
-        const py = baseY + (i % 2 === 0 ? -height * 0.035 : height * 0.035);
+        const py =
+          baseY + (i % 2 === 0 ? -height * 0.035 : height * 0.035);
         ctx.lineTo(px, py);
       }
       ctx.stroke();
@@ -526,13 +572,7 @@ function drawFlagOnCanvas(
     ctx.beginPath();
     ctx.arc(x + width / 2, y + height * 0.32, height * 0.13, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.restore();
-    return;
-  }
-
-  // Tonga
-  if (code === "TO") {
+  } else if (code === "TO") {
     ctx.fillStyle = "#C10000";
     ctx.fillRect(x, y, width, height);
     ctx.fillStyle = "#ffffff";
@@ -540,12 +580,7 @@ function drawFlagOnCanvas(
     ctx.fillStyle = "#C10000";
     ctx.fillRect(x + width * 0.19, y + height * 0.06, width * 0.09, height * 0.38);
     ctx.fillRect(x + width * 0.10, y + height * 0.19, width * 0.27, height * 0.12);
-    ctx.restore();
-    return;
-  }
-
-  // Solomon Islands
-  if (code === "SB") {
+  } else if (code === "SB") {
     ctx.fillStyle = "#0051BA";
     ctx.fillRect(x, y, width, height);
     ctx.fillStyle = "#215B33";
@@ -562,23 +597,7 @@ function drawFlagOnCanvas(
     ctx.moveTo(x - 2, y + height + 2);
     ctx.lineTo(x + width + 2, y - 2);
     ctx.stroke();
-
-    ctx.fillStyle = "#ffffff";
-    const stars = [
-      [0.10, 0.12], [0.22, 0.12], [0.34, 0.12],
-      [0.16, 0.27], [0.28, 0.27],
-    ];
-    stars.forEach(([sx, sy]) => {
-      ctx.beginPath();
-      ctx.arc(x + width * sx, y + height * sy, Math.max(1, height * 0.025), 0, Math.PI * 2);
-      ctx.fill();
-    });
-    ctx.restore();
-    return;
-  }
-
-  // United States
-  if (code === "US") {
+  } else if (code === "US") {
     const stripe = height / 13;
     for (let i = 0; i < 13; i += 1) {
       ctx.fillStyle = i % 2 === 0 ? "#B22234" : "#ffffff";
@@ -586,36 +605,18 @@ function drawFlagOnCanvas(
     }
     ctx.fillStyle = "#3C3B6E";
     ctx.fillRect(x, y, width * 0.42, stripe * 7);
+  } else {
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeStyle = "rgba(255,255,255,0.65)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
     ctx.fillStyle = "#ffffff";
-    for (let r = 0; r < 3; r += 1) {
-      for (let c = 0; c < 4; c += 1) {
-        ctx.beginPath();
-        ctx.arc(
-          x + width * (0.06 + c * 0.09),
-          y + stripe * (0.8 + r * 1.8),
-          Math.max(0.7, height * 0.014),
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-    return;
+    ctx.font = `700 ${Math.max(14, Math.floor(height * 0.38))}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(code, x + width / 2, y + height / 2);
   }
-
-  // Generic fallback for any other saved country code.
-  // It stays inside the same final raster image, so TikTok still receives one <img>.
-  ctx.fillStyle = "#111827";
-  ctx.fillRect(x, y, width, height);
-  ctx.strokeStyle = "rgba(255,255,255,0.65)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `700 ${Math.max(14, Math.floor(height * 0.38))}px Arial`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(code, x + width / 2, y + height / 2);
 
   ctx.restore();
 }
@@ -638,7 +639,10 @@ function drawContained(
   width: number,
   height: number,
 ) {
-  const ratio = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const ratio = Math.min(
+    width / image.naturalWidth,
+    height / image.naturalHeight,
+  );
   const drawWidth = image.naturalWidth * ratio;
   const drawHeight = image.naturalHeight * ratio;
   const drawX = x + (width - drawWidth) / 2;
@@ -683,33 +687,8 @@ function StandingRow({
           : " text-white";
 
   return (
-    <div
-      className="grid grid-cols-[42px_86px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
-    >
-      <div
-        className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
-      >
-        {rank}
-      </div>
-
-      <TeamIdentityImage
-        countryCode={standing.countryCode || ""}
-        countryName={standing.countryName || ""}
-        logoUrl={standing.logoUrl}
-        squadName={standing.squadName}
-      />
-
-      <p className="truncate text-[14px] font-black uppercase">
-        {standing.squadName}
-      </p>
-
-      <p className="text-center text-base font-black text-white">
-        {standing.totalKills}
-      </p>
-
-      <p className="text-center text-lg font-black text-white">
-        {standing.totalPoints}
-      </p>
+    <div className="border border-white/15 bg-black/20 px-3 py-2">
+      <RasterStandingRow standing={standing} rank={rank} rankStyle={rankStyle} />
     </div>
   );
 }
