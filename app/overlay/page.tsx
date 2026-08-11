@@ -36,6 +36,7 @@ type Standing = {
   logoUrl: string;
   countryCode?: string;
   countryName?: string;
+  flagUrl?: string;
   totalKills: number;
   totalPoints: number;
 };
@@ -61,7 +62,7 @@ export default function LiveOverlayPage() {
 
   const [standings, setStandings] = useState<Standing[]>([]);
   const [squadCountries, setSquadCountries] = useState<
-    Record<string, { countryCode: string; countryName: string }>
+    Record<string, { countryCode: string; countryName: string; flagUrl: string }>
   >({});
 
   useEffect(() => {
@@ -118,7 +119,7 @@ export default function LiveOverlayPage() {
     return onSnapshot(collection(db, "squads"), (snapshot) => {
       const countries: Record<
         string,
-        { countryCode: string; countryName: string }
+        { countryCode: string; countryName: string; flagUrl: string }
       > = {};
 
       snapshot.docs.forEach((squadDocument) => {
@@ -128,6 +129,8 @@ export default function LiveOverlayPage() {
             typeof data.countryCode === "string" ? data.countryCode : "",
           countryName:
             typeof data.countryName === "string" ? data.countryName : "",
+          flagUrl:
+            typeof data.flagUrl === "string" ? data.flagUrl : "",
         };
 
         countries[squadDocument.id] = country;
@@ -381,6 +384,12 @@ export default function LiveOverlayPage() {
                           `name:${normalizeSquadName(standing.squadName)}`
                         ]?.countryName ||
                         "",
+                      flagUrl:
+                        squadCountries[standing.squadId]?.flagUrl ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.flagUrl ||
+                        "",
                     }}
                     rank={index + 1}
                   />
@@ -399,13 +408,6 @@ function normalizeSquadName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function flagUrl(code: string) {
-  const cleanCode = code.trim().toLowerCase();
-
-  return /^[a-z]{2}$/.test(cleanCode)
-    ? `/flags/${cleanCode}.png`
-    : "";
-}
 
 function InfoBox({
   label,
@@ -453,10 +455,10 @@ function StandingRow({
       </div>
 
       <div className="flex h-10 w-8 items-center justify-center">
-        {standing.countryCode ? (
+        {standing.flagUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={flagUrl(standing.countryCode)}
+            src={standing.flagUrl}
             alt=""
             title={standing.countryName || standing.countryCode}
             className="h-5 w-8 rounded-sm object-cover shadow-sm"
