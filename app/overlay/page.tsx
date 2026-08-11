@@ -61,6 +61,7 @@ export default function LiveOverlayPage() {
     useState<TournamentSettings>(defaultTournament);
 
   const [standings, setStandings] = useState<Standing[]>([]);
+  const [flagDataUrls, setFlagDataUrls] = useState<Record<string, string>>({});
   const [squadCountries, setSquadCountries] = useState<
     Record<string, { countryCode: string; countryName: string; flagUrl: string }>
   >({});
@@ -188,6 +189,53 @@ export default function LiveOverlayPage() {
       },
     );
   }, []);
+
+  useEffect(() => {
+    const countryCodes = Array.from(
+      new Set(
+        Object.values(squadCountries)
+          .map((country) => country.countryCode.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+
+    countryCodes.forEach((countryCode) => {
+      if (flagDataUrls[countryCode]) return;
+
+      fetch(`/api/country-flag/${encodeURIComponent(countryCode)}`, {
+        cache: "force-cache",
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Flag request failed: ${response.status}`);
+          }
+
+          return response.blob();
+        })
+        .then(
+          (blob) =>
+            new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () =>
+                typeof reader.result === "string"
+                  ? resolve(reader.result)
+                  : reject(new Error("Unable to convert flag to data URL"));
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            }),
+        )
+        .then((dataUrl) => {
+          setFlagDataUrls((current) =>
+            current[countryCode]
+              ? current
+              : { ...current, [countryCode]: dataUrl },
+          );
+        })
+        .catch((error) => {
+          console.error(`Unable to embed flag ${countryCode}:`, error);
+        });
+    });
+  }, [squadCountries, flagDataUrls]);
 
   const scheduledMatch =
     tournament.matchSchedule?.[liveMatch.matchNumber - 1];
@@ -384,12 +432,18 @@ export default function LiveOverlayPage() {
                           `name:${normalizeSquadName(standing.squadName)}`
                         ]?.countryName ||
                         "",
-                      flagUrl:
-                        squadCountries[standing.squadId]?.flagUrl ||
-                        squadCountries[
-                          `name:${normalizeSquadName(standing.squadName)}`
-                        ]?.flagUrl ||
-                        "",
+                      flagUrl: (() => {
+                        const countryCode =
+                          squadCountries[standing.squadId]?.countryCode ||
+                          squadCountries[
+                            `name:${normalizeSquadName(standing.squadName)}`
+                          ]?.countryCode ||
+                          "";
+
+                        return (
+                          flagDataUrls[countryCode.trim().toLowerCase()] || ""
+                        );
+                      })(),
                     }}
                     rank={index + 1}
                   />
@@ -455,16 +509,16 @@ function StandingRow({
       </div>
 
       <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
-        {standing.countryCode ? (
+        {standing.flagUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`/api/country-flag/${encodeURIComponent((standing.countryCode || "").toLowerCase())}`}
-            alt=""
+            src={standing.flagUrl}
+            alt={standing.countryName || standing.countryCode || "Country flag"}
             className="h-full w-full object-contain p-1"
           />
         ) : (
           <span className="text-[6px] font-black text-black">
-            FLAG
+            {standing.countryCode ? "..." : "FLAG"}
           </span>
         )}
       </div>
