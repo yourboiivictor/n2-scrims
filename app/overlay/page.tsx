@@ -34,6 +34,8 @@ type Standing = {
   squadId: string;
   squadName: string;
   logoUrl: string;
+  countryCode?: string;
+  countryName?: string;
   totalKills: number;
   totalPoints: number;
 };
@@ -58,6 +60,36 @@ export default function LiveOverlayPage() {
     useState<TournamentSettings>(defaultTournament);
 
   const [standings, setStandings] = useState<Standing[]>([]);
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
+  >({});
+
+  useEffect(() => {
+    return onSnapshot(collection(db, "squads"), (snapshot) => {
+      const countries: Record<
+        string,
+        { countryCode: string; countryName: string }
+      > = {};
+
+      snapshot.docs.forEach((squadDocument) => {
+        const data = squadDocument.data();
+        const country = {
+          countryCode:
+            typeof data.countryCode === "string" ? data.countryCode : "",
+          countryName:
+            typeof data.countryName === "string" ? data.countryName : "",
+        };
+
+        countries[squadDocument.id] = country;
+
+        if (typeof data.squadName === "string" && data.squadName.trim()) {
+          countries[`name:${normalizeSquadName(data.squadName)}`] = country;
+        }
+      });
+
+      setSquadCountries(countries);
+    });
+  }, []);
 
   useEffect(() => {
     return onSnapshot(
@@ -317,8 +349,9 @@ export default function LiveOverlayPage() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
-            <div className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+            <div className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
+              <span />
               <span />
               <span>Team</span>
               <span className="text-center">Kills</span>
@@ -334,7 +367,21 @@ export default function LiveOverlayPage() {
                 visibleStandings.map((standing, index) => (
                   <StandingRow
                     key={standing.squadId}
-                    standing={standing}
+                    standing={{
+                      ...standing,
+                      countryCode:
+                        squadCountries[standing.squadId]?.countryCode ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryCode ||
+                        "",
+                      countryName:
+                        squadCountries[standing.squadId]?.countryName ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryName ||
+                        "",
+                    }}
                     rank={index + 1}
                   />
                 ))
@@ -346,6 +393,18 @@ export default function LiveOverlayPage() {
       </div>
     </main>
   );
+}
+
+function normalizeSquadName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function flagUrl(code: string) {
+  const cleanCode = code.trim().toLowerCase();
+
+  return /^[a-z]{2}$/.test(cleanCode)
+    ? `https://flagcdn.com/w80/${cleanCode}.png`
+    : "";
 }
 
 function InfoBox({
@@ -385,12 +444,24 @@ function StandingRow({
 
   return (
     <div
-      className="grid grid-cols-[42px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+      className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
     >
       <div
         className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
       >
         {rank}
+      </div>
+
+      <div className="flex h-10 w-8 items-center justify-center">
+        {standing.countryCode ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={flagUrl(standing.countryCode)}
+            alt=""
+            title={standing.countryName || standing.countryCode}
+            className="h-5 w-8 rounded-sm object-cover shadow-sm"
+          />
+        ) : null}
       </div>
 
       <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
