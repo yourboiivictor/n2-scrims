@@ -458,7 +458,7 @@ function StandingRow({
         {standing.flagUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={standing.flagUrl}
+            src={`/api/squad-flag/${encodeURIComponent(standing.squadId)}`}
             alt=""
             className="h-full w-full object-contain p-1"
           />
