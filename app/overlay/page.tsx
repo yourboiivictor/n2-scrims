@@ -349,9 +349,8 @@ export default function LiveOverlayPage() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
-            <div className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+            <div className="grid grid-cols-[42px_86px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
-              <span />
               <span />
               <span>Team</span>
               <span className="text-center">Kills</span>
@@ -400,79 +399,130 @@ function normalizeSquadName(name: string) {
 }
 
 
-function CountryFlagSvg({ code, label }: { code: string; label: string }) {
-  const c = code.trim().toUpperCase();
 
-  const common = {
-    width: 32,
-    height: 20,
-    viewBox: "0 0 32 20",
-    role: "img" as const,
-    "aria-label": label,
-    className: "h-5 w-8 rounded-sm shadow-sm",
-  };
+function TeamIdentityImage({
+  countryCode,
+  countryName,
+  logoUrl,
+  squadName,
+}: {
+  countryCode: string;
+  countryName: string;
+  logoUrl: string;
+  squadName: string;
+}) {
+  const [src, setSrc] = useState("");
 
-  if (c === "KI") {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function buildImage() {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 172;
+        canvas.height = 80;
+
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Flag box
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 64, 80);
+
+        const cleanCode = countryCode.trim().toLowerCase();
+
+        if (/^[a-z]{2}$/.test(cleanCode)) {
+          try {
+            const flag = await loadImageForCanvas(`/flags/${cleanCode}.png`);
+            drawContained(ctx, flag, 4, 14, 56, 52);
+          } catch {
+            ctx.fillStyle = "#111827";
+            ctx.fillRect(4, 14, 56, 52);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "700 18px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(countryCode.toUpperCase(), 32, 40);
+          }
+        }
+
+        // Logo box
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(72, 0, 80, 80);
+
+        if (logoUrl) {
+          try {
+            const logo = await loadImageForCanvas(logoUrl);
+            drawContained(ctx, logo, 76, 4, 72, 72);
+          } catch {
+            ctx.fillStyle = "#111827";
+            ctx.font = "700 12px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("LOGO", 112, 40);
+          }
+        }
+
+        if (!cancelled) {
+          setSrc(canvas.toDataURL("image/png"));
+        }
+      } catch (error) {
+        console.error("Unable to build team identity image:", error);
+      }
+    }
+
+    buildImage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [countryCode, logoUrl]);
+
+  if (!src) {
     return (
-      <svg {...common}>
-        <rect width="32" height="10" fill="#CE1126" />
-        <rect y="10" width="32" height="10" fill="#003F87" />
-        <path d="M0 11 C4 9 8 13 12 11 S20 9 24 11 S28 13 32 11 V13 C28 15 24 11 20 13 S12 15 8 13 S4 11 0 13Z" fill="#fff" />
-        <path d="M0 15 C4 13 8 17 12 15 S20 13 24 15 S28 17 32 15 V17 C28 19 24 15 20 17 S12 19 8 17 S4 15 0 17Z" fill="#fff" />
-        <circle cx="16" cy="7" r="3" fill="#FCD116" />
-        <path d="M16 1.8 L16.7 4.3 L19.2 3.6 L17.6 5.6 L20 6.5 L17.4 6.8 L18.6 9 L16.6 7.5 L16 10 L15.4 7.5 L13.4 9 L14.6 6.8 L12 6.5 L14.4 5.6 L12.8 3.6 L15.3 4.3Z" fill="#FCD116" />
-      </svg>
+      <div className="h-10 w-[86px]" aria-label={`${countryName} ${squadName}`} />
     );
   }
 
-  if (c === "TO") {
-    return (
-      <svg {...common}>
-        <rect width="32" height="20" fill="#C10000" />
-        <rect width="14" height="9" fill="#fff" />
-        <rect x="5.5" y="1" width="3" height="7" fill="#C10000" />
-        <rect x="3.5" y="3" width="7" height="3" fill="#C10000" />
-      </svg>
-    );
-  }
-
-  if (c === "SB") {
-    return (
-      <svg {...common}>
-        <polygon points="0,0 32,0 0,20" fill="#0051BA" />
-        <polygon points="32,0 32,20 0,20" fill="#215B33" />
-        <polygon points="0,17 28,0 32,0 0,20" fill="#FCD116" />
-        {[3,7,11,5,9].map((x, i) => (
-          <circle key={i} cx={x} cy={i < 3 ? 3 : 7} r="0.8" fill="#fff" />
-        ))}
-      </svg>
-    );
-  }
-
-  if (c === "US") {
-    return (
-      <svg {...common}>
-        {Array.from({ length: 13 }).map((_, i) => (
-          <rect key={i} y={(20 / 13) * i} width="32" height={20 / 13} fill={i % 2 === 0 ? "#B22234" : "#fff"} />
-        ))}
-        <rect width="13" height="10.8" fill="#3C3B6E" />
-        {Array.from({ length: 12 }).map((_, i) => (
-          <circle key={i} cx={1.5 + (i % 4) * 3} cy={1.5 + Math.floor(i / 4) * 3} r="0.45" fill="#fff" />
-        ))}
-      </svg>
-    );
-  }
-
-  // Generic inline-SVG fallback so TikTok still receives SVG markup, not an image.
   return (
-    <svg {...common}>
-      <rect width="32" height="20" fill="#111827" />
-      <rect x="1" y="1" width="30" height="18" fill="none" stroke="#fff" strokeOpacity="0.5" />
-      <text x="16" y="13" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff">
-        {c}
-      </text>
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      title={[countryName, squadName].filter(Boolean).join(" • ")}
+      className="h-10 w-[86px] object-contain"
+    />
   );
+}
+
+function loadImageForCanvas(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Unable to load image: ${src}`));
+    image.src = src;
+  });
+}
+
+function drawContained(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const ratio = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * ratio;
+  const drawHeight = image.naturalHeight * ratio;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 }
 
 function InfoBox({
@@ -512,7 +562,7 @@ function StandingRow({
 
   return (
     <div
-      className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+      className="grid grid-cols-[42px_86px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
     >
       <div
         className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
@@ -520,33 +570,12 @@ function StandingRow({
         {rank}
       </div>
 
-      <div className="flex h-10 w-[88px] items-center gap-2">
-        {standing.countryCode ? (
-          <div className="flex h-10 w-8 shrink-0 items-center justify-center">
-            <CountryFlagSvg
-              code={standing.countryCode}
-              label={standing.countryName || standing.countryCode}
-            />
-          </div>
-        ) : (
-          <div className="h-10 w-8 shrink-0" />
-        )}
-
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border border-white bg-white">
-          {standing.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={standing.logoUrl}
-              alt=""
-              className="h-full w-full object-contain p-1"
-            />
-          ) : (
-            <span className="text-[6px] font-black text-black">
-              LOGO
-            </span>
-          )}
-        </div>
-      </div>
+      <TeamIdentityImage
+        countryCode={standing.countryCode || ""}
+        countryName={standing.countryName || ""}
+        logoUrl={standing.logoUrl}
+        squadName={standing.squadName}
+      />
 
       <p className="truncate text-[14px] font-black uppercase">
         {standing.squadName}
