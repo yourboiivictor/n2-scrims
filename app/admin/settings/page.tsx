@@ -110,6 +110,12 @@ export default function TournamentSettingsPage() {
   );
   const [newRule, setNewRule] = useState("");
   const [eventName, setEventName] = useState("Event 1");
+  const [scrimDate, setScrimDate] = useState("");
+  const [scrimTime, setScrimTime] = useState("");
+  const [scrimTimeZone, setScrimTimeZone] = useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  );
+  const [registrationOpen, setRegistrationOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -141,6 +147,10 @@ export default function TournamentSettingsPage() {
 
         const data = snapshot.data() as Partial<TournamentSettings> & {
           eventName?: string;
+          scrimDate?: string;
+          scrimTime?: string;
+          scrimTimeZone?: string;
+          registrationOpen?: boolean;
         };
 
         setSettings(normalizeSettings(data));
@@ -148,6 +158,22 @@ export default function TournamentSettingsPage() {
           typeof data.eventName === "string" && data.eventName.trim()
             ? data.eventName
             : "Event 1",
+        );
+        setScrimDate(
+          typeof data.scrimDate === "string" ? data.scrimDate : "",
+        );
+        setScrimTime(
+          typeof data.scrimTime === "string" ? data.scrimTime : "",
+        );
+        setScrimTimeZone(
+          typeof data.scrimTimeZone === "string" && data.scrimTimeZone
+            ? data.scrimTimeZone
+            : Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        );
+        setRegistrationOpen(
+          typeof data.registrationOpen === "boolean"
+            ? data.registrationOpen
+            : true,
         );
       },
       (error) => {
@@ -298,6 +324,10 @@ export default function TournamentSettingsPage() {
         {
           ...cleanedSettings,
           eventName: eventName.trim() || "Event 1",
+          scrimDate,
+          scrimTime,
+          scrimTimeZone,
+          registrationOpen,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -441,6 +471,102 @@ export default function TournamentSettingsPage() {
                 placeholder="https://www.tiktok.com/@yourname/live"
               />
             </div>
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-amber-400/20 bg-slate-900 p-5">
+          <SectionTitle
+            title="Scrim Date, Time & Registration"
+            description="Set the scrim in your local time zone. Visitors will automatically see the equivalent date and time in their own location."
+          />
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
+                Scrim Date
+              </span>
+              <input
+                type="date"
+                value={scrimDate}
+                onChange={(event) => setScrimDate(event.target.value)}
+                className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
+                Scrim Start Time
+              </span>
+              <input
+                type="time"
+                value={scrimTime}
+                onChange={(event) => setScrimTime(event.target.value)}
+                className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
+                Time Zone
+              </span>
+              <select
+                value={scrimTimeZone}
+                onChange={(event) => setScrimTimeZone(event.target.value)}
+                className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400"
+              >
+                {[
+                  "Pacific/Honolulu",
+                  "America/Anchorage",
+                  "America/Los_Angeles",
+                  "America/Denver",
+                  "America/Chicago",
+                  "America/New_York",
+                  "America/Puerto_Rico",
+                  "Pacific/Pago_Pago",
+                  "Pacific/Guam",
+                  "Pacific/Auckland",
+                  "Australia/Sydney",
+                  "Asia/Tokyo",
+                  "Asia/Seoul",
+                  "Asia/Manila",
+                  "Asia/Singapore",
+                  "Asia/Kolkata",
+                  "Asia/Dubai",
+                  "Europe/London",
+                  "Europe/Paris",
+                  "UTC",
+                ].map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-xs text-amber-100">
+            Saved time zone: <strong>{scrimTimeZone}</strong>. The Home page converts this scrim time to each visitor&apos;s device time zone automatically.
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-950 px-4 py-4">
+            <div>
+              <p className="font-black">Squad Registration</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Closing registration disables the Home page registration buttons.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setRegistrationOpen((current) => !current)}
+              className={`shrink-0 rounded-lg px-5 py-2.5 text-sm font-black ${
+                registrationOpen
+                  ? "bg-green-500 text-black"
+                  : "bg-red-500 text-white"
+              }`}
+            >
+              {registrationOpen ? "OPEN" : "CLOSED"}
+            </button>
           </div>
         </section>
 

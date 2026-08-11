@@ -9,6 +9,65 @@ import { auth, db, googleProvider } from "../firebase";
 const MAX_SQUADS = 25;
 const OWNER_EMAIL = "victornicetry2@gmail.com";
 
+function timeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+
+  const asUtc = Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour,
+    values.minute,
+    values.second,
+  );
+
+  return asUtc - date.getTime();
+}
+
+function scrimDateToUtc(
+  dateValue: string,
+  timeValue: string,
+  timeZone: string,
+) {
+  if (!dateValue || !timeValue) return null;
+
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [hour, minute] = timeValue.split(":").map(Number);
+
+  if (![year, month, day, hour, minute].every(Number.isFinite)) {
+    return null;
+  }
+
+  const guessedUtc = new Date(
+    Date.UTC(year, month - 1, day, hour, minute, 0),
+  );
+
+  const firstOffset = timeZoneOffsetMs(guessedUtc, timeZone);
+  let result = new Date(guessedUtc.getTime() - firstOffset);
+
+  const correctedOffset = timeZoneOffsetMs(result, timeZone);
+  if (correctedOffset !== firstOffset) {
+    result = new Date(guessedUtc.getTime() - correctedOffset);
+  }
+
+  return result;
+}
+
 export default function Home() {
   const router = useRouter();
 
@@ -19,7 +78,18 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [checkingStaff, setCheckingStaff] = useState(true);
   const [hasAdminAccess, setHasAdminAccess] = useState(false);
+  const [scrimDate, setScrimDate] = useState("");
+  const [scrimTime, setScrimTime] = useState("");
+  const [scrimTimeZone, setScrimTimeZone] = useState("UTC");
+  const [registrationOpen, setRegistrationOpen] = useState(true);
+  const [viewerTimeZone, setViewerTimeZone] = useState("UTC");
 
+
+  useEffect(() => {
+    setViewerTimeZone(
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    );
+  }, []);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (currentUser) => {
@@ -102,6 +172,37 @@ export default function Home() {
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    return onSnapshot(
+      doc(db, "settings", "tournament"),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+
+        const data = snapshot.data();
+
+        setScrimDate(
+          typeof data.scrimDate === "string" ? data.scrimDate : "",
+        );
+        setScrimTime(
+          typeof data.scrimTime === "string" ? data.scrimTime : "",
+        );
+        setScrimTimeZone(
+          typeof data.scrimTimeZone === "string" && data.scrimTimeZone
+            ? data.scrimTimeZone
+            : "UTC",
+        );
+        setRegistrationOpen(
+          typeof data.registrationOpen === "boolean"
+            ? data.registrationOpen
+            : true,
+        );
+      },
+      (error) => {
+        console.error("Tournament settings error:", error);
+      },
+    );
+  }, []);
+
   async function handleRegister() {
     if (signingIn) return;
 
@@ -149,6 +250,32 @@ export default function Home() {
 
   const spotsLeft = Math.max(MAX_SQUADS - approvedSquads, 0);
   const registrationFull = approvedSquads >= MAX_SQUADS;
+  const registrationUnavailable = registrationFull || !registrationOpen;
+
+  const scrimInstant = scrimDateToUtc(
+    scrimDate,
+    scrimTime,
+    scrimTimeZone,
+  );
+
+  const localScrimDate = scrimInstant
+    ? new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: viewerTimeZone,
+      }).format(scrimInstant)
+    : "Coming Soon";
+
+  const localScrimTime = scrimInstant
+    ? new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+        timeZone: viewerTimeZone,
+      }).format(scrimInstant)
+    : "Time TBA";
 
   return (
     <main
@@ -179,14 +306,16 @@ export default function Home() {
             <button
               type="button"
               onClick={handleRegister}
-              disabled={signingIn || registrationFull}
+              disabled={signingIn || registrationUnavailable}
               className="w-full rounded-xl bg-blue-600 px-8 py-4 font-bold uppercase tracking-wide transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
-              {registrationFull
-                ? "Registration Full"
-                : signingIn
-                  ? "Signing In..."
-                  : "Register Squad"}
+              {!registrationOpen
+                ? "Registration Closed"
+                : registrationFull
+                  ? "Registration Full"
+                  : signingIn
+                    ? "Signing In..."
+                    : "Register Squad"}
             </button>
 
             <button
@@ -235,10 +364,16 @@ export default function Home() {
                 Tournament Date
               </p>
 
-              <p className="mt-3 text-2xl font-black">Coming Soon</p>
+              <p className="mt-3 text-xl font-black text-amber-300">
+                {localScrimDate}
+              </p>
 
-              <p className="mt-2 text-sm text-gray-400">
-                Stay tuned for updates
+              <p className="mt-2 text-lg font-black text-white">
+                {localScrimTime}
+              </p>
+
+              <p className="mt-2 text-xs text-gray-500">
+                Shown in your local time ({viewerTimeZone})
               </p>
             </div>
 
@@ -260,9 +395,11 @@ export default function Home() {
               <p className="mt-2 text-sm text-gray-400">
                 {loadingSquads
                   ? "Checking registrations"
-                  : registrationFull
-                    ? "Registration is full"
-                    : `${spotsLeft} spots remaining`}
+                  : !registrationOpen
+                    ? "Registration is closed"
+                    : registrationFull
+                      ? "Registration is full"
+                      : `${spotsLeft} spots remaining`}
               </p>
             </button>
 
@@ -334,17 +471,23 @@ export default function Home() {
       <section className="border-t border-gray-900 bg-blue-950/20 px-6 py-20 text-center">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-4xl font-black">
-            {registrationFull ? "Registration Is Full" : "Ready to Compete?"}
+            {!registrationOpen
+              ? "Registration Is Closed"
+              : registrationFull
+                ? "Registration Is Full"
+                : "Ready to Compete?"}
           </h2>
 
           <p className="mt-4 text-gray-300">
-            {registrationFull
-              ? "View the approved squads that secured a tournament spot."
-              : "Sign in with Google and register your squad of four players."}
+            {!registrationOpen
+              ? `Next scrim: ${localScrimDate} at ${localScrimTime}.`
+              : registrationFull
+                ? "View the approved squads that secured a tournament spot."
+                : "Sign in with Google and register your squad of four players."}
           </p>
 
           <div className="mt-8 flex flex-col justify-center gap-4 sm:flex-row">
-            {!registrationFull && (
+            {!registrationUnavailable && (
               <button
                 type="button"
                 onClick={handleRegister}
