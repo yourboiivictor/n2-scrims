@@ -57,9 +57,6 @@ export default function AdminPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const [squads, setSquads] = useState<Squad[]>([]);
   const [loadingSquads, setLoadingSquads] = useState(false);
-  const [registrationOpen, setRegistrationOpen] = useState(true);
-  const [loadingRegistration, setLoadingRegistration] = useState(true);
-  const [changingRegistration, setChangingRegistration] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [workingId, setWorkingId] = useState<string | null>(null);
@@ -150,27 +147,6 @@ export default function AdminPage() {
     }
   }, [isAdmin]);
 
-  useEffect(() => {
-    if (!isAdmin) {
-      setLoadingRegistration(false);
-      return;
-    }
-
-    return onSnapshot(
-      doc(db, "settings", "registration"),
-      (snapshot) => {
-        setRegistrationOpen(
-          snapshot.exists() ? snapshot.data().isOpen !== false : true,
-        );
-        setLoadingRegistration(false);
-      },
-      (error) => {
-        console.error("Unable to load registration status:", error);
-        setMessage("Unable to load registration status.");
-        setLoadingRegistration(false);
-      },
-    );
-  }, [isAdmin]);
 
   useEffect(() => {
     function closeWithEscape(event: KeyboardEvent) {
@@ -263,42 +239,6 @@ export default function AdminPage() {
       setMessage("Unable to load squads from Firestore.");
     } finally {
       setLoadingSquads(false);
-    }
-  }
-
-  async function toggleRegistration() {
-    if (loadingRegistration || changingRegistration) return;
-
-    const nextValue = !registrationOpen;
-
-    if (
-      !window.confirm(
-        nextValue
-          ? "Open registration for new squads?"
-          : "Close registration for new squads?",
-      )
-    ) {
-      return;
-    }
-
-    setChangingRegistration(true);
-    setMessage("");
-
-    try {
-      await updateDoc(doc(db, "settings", "registration"), {
-        isOpen: nextValue,
-      });
-
-      setMessage(
-        nextValue
-          ? "Registration is now open."
-          : "Registration is now closed.",
-      );
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to update registration.");
-    } finally {
-      setChangingRegistration(false);
     }
   }
 
@@ -905,49 +845,7 @@ export default function AdminPage() {
             <StatCard label="Rejected" value={rejectedSquads} />
           </section>
 
-          <section
-            className={`mt-6 rounded-3xl border p-6 ${
-              registrationOpen
-                ? "border-green-800 bg-green-950/20"
-                : "border-red-800 bg-red-950/20"
-            }`}
-          >
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.25em] text-gray-400">
-                  Tournament Registration
-                </p>
-                <h2
-                  className={`mt-2 text-2xl font-black uppercase ${
-                    registrationOpen
-                      ? "text-green-300"
-                      : "text-red-300"
-                  }`}
-                >
-                  Registration {registrationOpen ? "Open" : "Closed"}
-                </h2>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => void toggleRegistration()}
-                disabled={
-                  loadingRegistration || changingRegistration
-                }
-                className={`rounded-xl px-6 py-4 text-sm font-black uppercase disabled:opacity-50 ${
-                  registrationOpen
-                    ? "bg-red-700"
-                    : "bg-green-700"
-                }`}
-              >
-                {changingRegistration
-                  ? "Updating..."
-                  : registrationOpen
-                    ? "Close Registration"
-                    : "Open Registration"}
-              </button>
-            </div>
-          </section>
 
           <section className="mt-6 rounded-2xl border border-blue-900 bg-black/90 p-4">
             <label className="text-xs font-black uppercase tracking-widest text-blue-400">

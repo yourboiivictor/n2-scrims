@@ -115,9 +115,11 @@ export default function TournamentSettingsPage() {
   const [scrimTimeZone, setScrimTimeZone] = useState(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   );
-  const [registrationOpen, setRegistrationOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [registrationOpen, setRegistrationOpen] = useState(true);
+  const [loadingRegistration, setLoadingRegistration] = useState(true);
+  const [changingRegistration, setChangingRegistration] = useState(false);
 
   const isAdmin =
     user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
@@ -135,6 +137,28 @@ export default function TournamentSettingsPage() {
   }, []);
 
   useEffect(() => {
+    if (!isAdmin) {
+      setLoadingRegistration(false);
+      return;
+    }
+
+    return onSnapshot(
+      doc(db, "settings", "registration"),
+      (snapshot) => {
+        setRegistrationOpen(
+          snapshot.exists() ? snapshot.data().isOpen !== false : true,
+        );
+        setLoadingRegistration(false);
+      },
+      (error) => {
+        console.error("Unable to load registration status:", error);
+        setMessage("Unable to load registration status.");
+        setLoadingRegistration(false);
+      },
+    );
+  }, [isAdmin]);
+
+  useEffect(() => {
     if (!isAdmin) return;
 
     return onSnapshot(
@@ -150,7 +174,6 @@ export default function TournamentSettingsPage() {
           scrimDate?: string;
           scrimTime?: string;
           scrimTimeZone?: string;
-          registrationOpen?: boolean;
         };
 
         setSettings(normalizeSettings(data));
@@ -159,21 +182,12 @@ export default function TournamentSettingsPage() {
             ? data.eventName
             : "Event 1",
         );
-        setScrimDate(
-          typeof data.scrimDate === "string" ? data.scrimDate : "",
-        );
-        setScrimTime(
-          typeof data.scrimTime === "string" ? data.scrimTime : "",
-        );
+        setScrimDate(typeof data.scrimDate === "string" ? data.scrimDate : "");
+        setScrimTime(typeof data.scrimTime === "string" ? data.scrimTime : "");
         setScrimTimeZone(
           typeof data.scrimTimeZone === "string" && data.scrimTimeZone
             ? data.scrimTimeZone
             : Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        );
-        setRegistrationOpen(
-          typeof data.registrationOpen === "boolean"
-            ? data.registrationOpen
-            : true,
         );
       },
       (error) => {
@@ -283,6 +297,44 @@ export default function TournamentSettingsPage() {
     }));
   }
 
+  async function toggleRegistration() {
+    if (loadingRegistration || changingRegistration) return;
+
+    const nextValue = !registrationOpen;
+
+    if (
+      !window.confirm(
+        nextValue
+          ? "Open registration for new squads?"
+          : "Close registration for new squads?",
+      )
+    ) {
+      return;
+    }
+
+    setChangingRegistration(true);
+    setMessage("");
+
+    try {
+      await setDoc(
+        doc(db, "settings", "registration"),
+        { isOpen: nextValue },
+        { merge: true },
+      );
+
+      setMessage(
+        nextValue
+          ? "Registration is now open."
+          : "Registration is now closed.",
+      );
+    } catch (error) {
+      console.error("Unable to update registration:", error);
+      setMessage("Unable to update registration.");
+    } finally {
+      setChangingRegistration(false);
+    }
+  }
+
   async function save() {
     setSaving(true);
     setMessage("");
@@ -327,7 +379,6 @@ export default function TournamentSettingsPage() {
           scrimDate,
           scrimTime,
           scrimTimeZone,
-          registrationOpen,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -476,96 +527,72 @@ export default function TournamentSettingsPage() {
 
         <section className="mt-4 rounded-2xl border border-amber-400/20 bg-slate-900 p-5">
           <SectionTitle
-            title="Scrim Date, Time & Registration"
-            description="Set the scrim in your local time zone. Visitors will automatically see the equivalent date and time in their own location."
+            title="Next Scrim Date & Time"
+            description="Set the official scrim time. The Home page automatically converts it to each visitor's local time zone."
           />
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <label className="block">
-              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
-                Scrim Date
-              </span>
-              <input
-                type="date"
-                value={scrimDate}
-                onChange={(event) => setScrimDate(event.target.value)}
-                className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400"
-              />
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">Scrim Date</span>
+              <input type="date" value={scrimDate} onChange={(event) => setScrimDate(event.target.value)} className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400" />
             </label>
-
             <label className="block">
-              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
-                Scrim Start Time
-              </span>
-              <input
-                type="time"
-                value={scrimTime}
-                onChange={(event) => setScrimTime(event.target.value)}
-                className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400"
-              />
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">Scrim Start Time</span>
+              <input type="time" value={scrimTime} onChange={(event) => setScrimTime(event.target.value)} className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400" />
             </label>
-
             <label className="block">
-              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">
-                Time Zone
-              </span>
-              <select
-                value={scrimTimeZone}
-                onChange={(event) => setScrimTimeZone(event.target.value)}
-                className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400"
-              >
-                {[
-                  "Pacific/Honolulu",
-                  "America/Anchorage",
-                  "America/Los_Angeles",
-                  "America/Denver",
-                  "America/Chicago",
-                  "America/New_York",
-                  "America/Puerto_Rico",
-                  "Pacific/Pago_Pago",
-                  "Pacific/Guam",
-                  "Pacific/Auckland",
-                  "Australia/Sydney",
-                  "Asia/Tokyo",
-                  "Asia/Seoul",
-                  "Asia/Manila",
-                  "Asia/Singapore",
-                  "Asia/Kolkata",
-                  "Asia/Dubai",
-                  "Europe/London",
-                  "Europe/Paris",
-                  "UTC",
-                ].map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">Official Time Zone</span>
+              <select value={scrimTimeZone} onChange={(event) => setScrimTimeZone(event.target.value)} className="h-12 w-full rounded-lg border border-white/10 bg-slate-950 px-4 outline-none focus:border-amber-400">
+                {["Pacific/Honolulu","America/Anchorage","America/Los_Angeles","America/Denver","America/Chicago","America/New_York","America/Puerto_Rico","Pacific/Pago_Pago","Pacific/Guam","Pacific/Auckland","Australia/Sydney","Asia/Tokyo","Asia/Seoul","Asia/Manila","Asia/Singapore","Asia/Kolkata","Asia/Dubai","Europe/London","Europe/Paris","UTC"].map((zone) => <option key={zone} value={zone}>{zone}</option>)}
               </select>
             </label>
           </div>
+          <p className="mt-3 text-xs text-amber-200">
+            Registration OPEN/CLOSED is still controlled from the main Admin Dashboard.
+          </p>
+        </section>
 
-          <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-xs text-amber-100">
-            Saved time zone: <strong>{scrimTimeZone}</strong>. The Home page converts this scrim time to each visitor&apos;s device time zone automatically.
-          </div>
+        <section
+          className={`mt-4 rounded-2xl border p-5 ${
+            registrationOpen
+              ? "border-green-500/30 bg-green-500/5"
+              : "border-red-500/30 bg-red-500/5"
+          }`}
+        >
+          <SectionTitle
+            title="Squad Registration"
+            description="Open or close public squad registration."
+          />
 
-          <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-950 px-4 py-4">
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="font-black">Squad Registration</p>
-              <p className="mt-1 text-xs text-slate-400">
-                Closing registration disables the Home page registration buttons.
+              <p
+                className={`text-2xl font-black ${
+                  registrationOpen ? "text-green-300" : "text-red-300"
+                }`}
+              >
+                Registration {registrationOpen ? "Open" : "Closed"}
+              </p>
+              <p className="mt-1 text-sm text-slate-400">
+                The Home page and registration page use this same Firestore setting.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => setRegistrationOpen((current) => !current)}
-              className={`shrink-0 rounded-lg px-5 py-2.5 text-sm font-black ${
+              onClick={() => void toggleRegistration()}
+              disabled={loadingRegistration || changingRegistration}
+              className={`rounded-xl px-6 py-3 text-sm font-black uppercase disabled:opacity-50 ${
                 registrationOpen
-                  ? "bg-green-500 text-black"
-                  : "bg-red-500 text-white"
+                  ? "bg-red-600 text-white"
+                  : "bg-green-500 text-black"
               }`}
             >
-              {registrationOpen ? "OPEN" : "CLOSED"}
+              {changingRegistration
+                ? "Updating..."
+                : registrationOpen
+                  ? "Close Registration"
+                  : "Open Registration"}
             </button>
           </div>
         </section>
