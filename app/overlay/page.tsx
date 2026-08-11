@@ -452,13 +452,13 @@ function StandingRow({
         {rank}
       </div>
 
-      <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
+      <div className="flex h-10 w-10 items-center justify-center overflow-hidden bg-transparent">
         {standing.countryCode ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`/api/country-flag/${encodeURIComponent(standing.countryCode.trim().toLowerCase())}`}
             alt={standing.countryName || `${standing.countryCode} flag`}
-            className="h-full w-full object-contain p-1"
+            className="h-full w-full object-contain"
           />
         ) : (
           <span className="text-[6px] font-black text-black">
