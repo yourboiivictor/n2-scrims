@@ -349,7 +349,7 @@ export default function LiveOverlayPage() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
-            <div className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+            <div className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
               <span />
               <span />
@@ -512,7 +512,7 @@ function StandingRow({
 
   return (
     <div
-      className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+      className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
     >
       <div
         className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
@@ -520,28 +520,32 @@ function StandingRow({
         {rank}
       </div>
 
-      <div className="flex h-10 w-8 items-center justify-center">
+      <div className="flex h-10 w-[88px] items-center gap-2">
         {standing.countryCode ? (
-          <CountryFlagSvg
-            code={standing.countryCode}
-            label={standing.countryName || standing.countryCode}
-          />
-        ) : null}
-      </div>
-
-      <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
-        {standing.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={standing.logoUrl}
-            alt=""
-            className="h-full w-full object-contain p-1"
-          />
+          <div className="flex h-10 w-8 shrink-0 items-center justify-center">
+            <CountryFlagSvg
+              code={standing.countryCode}
+              label={standing.countryName || standing.countryCode}
+            />
+          </div>
         ) : (
-          <span className="text-[6px] font-black text-black">
-            LOGO
-          </span>
+          <div className="h-10 w-8 shrink-0" />
         )}
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border border-white bg-white">
+          {standing.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={standing.logoUrl}
+              alt=""
+              className="h-full w-full object-contain p-1"
+            />
+          ) : (
+            <span className="text-[6px] font-black text-black">
+              LOGO
+            </span>
+          )}
+        </div>
       </div>
 
       <p className="truncate text-[14px] font-black uppercase">
