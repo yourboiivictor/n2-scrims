@@ -49,8 +49,8 @@ export default function TopChickenDinnersOverlayPage() {
 
   return (
     <main className="min-h-screen bg-transparent p-4 text-white">
-      <section className="w-[620px] overflow-hidden rounded-2xl border border-white/15 bg-slate-950/95 shadow-2xl">
-        <div className="bg-violet-600 px-5 py-3 text-xl font-black">
+      <section className="w-[620px] overflow-hidden rounded-2xl border border-white/20 bg-black/95 shadow-2xl">
+        <div className="bg-white px-5 py-3 text-xl font-black text-black">
           TOP CHICKEN DINNERS
         </div>
 
@@ -59,11 +59,11 @@ export default function TopChickenDinnersOverlayPage() {
             key={row.squadId}
             className="grid grid-cols-[55px_55px_1fr_110px] items-center gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
           >
-            <div className="text-xl font-black text-violet-400">
+            <div className="text-xl font-black text-white">
               #{index + 1}
             </div>
 
-            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-white/5">
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-white/10">
               {row.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -76,16 +76,16 @@ export default function TopChickenDinnersOverlayPage() {
 
             <div className="min-w-0">
               <p className="truncate font-black">{row.squadName}</p>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-white/65">
                 {row.totalKills} kills - {row.totalPoints} points
               </p>
             </div>
 
             <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              <p className="text-[10px] font-black uppercase tracking-wider text-white/55">
                 Dinners
               </p>
-              <p className="text-2xl font-black text-yellow-400">
+              <p className="text-2xl font-black text-white">
                 {row.chickenDinners}
               </p>
             </div>
