@@ -435,18 +435,7 @@ function TeamIdentityImage({
         const cleanCode = countryCode.trim().toLowerCase();
 
         if (/^[a-z]{2}$/.test(cleanCode)) {
-          try {
-            const flag = await loadImageForCanvas(`/flags/${cleanCode}.png`);
-            drawContained(ctx, flag, 4, 14, 56, 52);
-          } catch {
-            ctx.fillStyle = "#111827";
-            ctx.fillRect(4, 14, 56, 52);
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "700 18px Arial";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(countryCode.toUpperCase(), 32, 40);
-          }
+          drawFlagOnCanvas(ctx, cleanCode.toUpperCase(), 4, 14, 56, 52);
         }
 
         // Logo box
@@ -496,6 +485,139 @@ function TeamIdentityImage({
       className="h-10 w-[86px] object-contain"
     />
   );
+}
+
+
+function drawFlagOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  code: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, width, height);
+  ctx.clip();
+
+  // Kiribati
+  if (code === "KI") {
+    ctx.fillStyle = "#CE1126";
+    ctx.fillRect(x, y, width, height / 2);
+    ctx.fillStyle = "#003F87";
+    ctx.fillRect(x, y + height / 2, width, height / 2);
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = Math.max(2, height * 0.07);
+    for (let row = 0; row < 3; row += 1) {
+      const baseY = y + height * (0.58 + row * 0.13);
+      ctx.beginPath();
+      ctx.moveTo(x, baseY);
+      for (let i = 0; i <= 8; i += 1) {
+        const px = x + (width / 8) * i;
+        const py = baseY + (i % 2 === 0 ? -height * 0.035 : height * 0.035);
+        ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#FCD116";
+    ctx.beginPath();
+    ctx.arc(x + width / 2, y + height * 0.32, height * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    return;
+  }
+
+  // Tonga
+  if (code === "TO") {
+    ctx.fillStyle = "#C10000";
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x, y, width * 0.46, height * 0.5);
+    ctx.fillStyle = "#C10000";
+    ctx.fillRect(x + width * 0.19, y + height * 0.06, width * 0.09, height * 0.38);
+    ctx.fillRect(x + width * 0.10, y + height * 0.19, width * 0.27, height * 0.12);
+    ctx.restore();
+    return;
+  }
+
+  // Solomon Islands
+  if (code === "SB") {
+    ctx.fillStyle = "#0051BA";
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = "#215B33";
+    ctx.beginPath();
+    ctx.moveTo(x, y + height);
+    ctx.lineTo(x + width, y);
+    ctx.lineTo(x + width, y + height);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#FCD116";
+    ctx.lineWidth = Math.max(4, height * 0.13);
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + height + 2);
+    ctx.lineTo(x + width + 2, y - 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    const stars = [
+      [0.10, 0.12], [0.22, 0.12], [0.34, 0.12],
+      [0.16, 0.27], [0.28, 0.27],
+    ];
+    stars.forEach(([sx, sy]) => {
+      ctx.beginPath();
+      ctx.arc(x + width * sx, y + height * sy, Math.max(1, height * 0.025), 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+    return;
+  }
+
+  // United States
+  if (code === "US") {
+    const stripe = height / 13;
+    for (let i = 0; i < 13; i += 1) {
+      ctx.fillStyle = i % 2 === 0 ? "#B22234" : "#ffffff";
+      ctx.fillRect(x, y + stripe * i, width, stripe + 0.5);
+    }
+    ctx.fillStyle = "#3C3B6E";
+    ctx.fillRect(x, y, width * 0.42, stripe * 7);
+    ctx.fillStyle = "#ffffff";
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 4; c += 1) {
+        ctx.beginPath();
+        ctx.arc(
+          x + width * (0.06 + c * 0.09),
+          y + stripe * (0.8 + r * 1.8),
+          Math.max(0.7, height * 0.014),
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
+  // Generic fallback for any other saved country code.
+  // It stays inside the same final raster image, so TikTok still receives one <img>.
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(x, y, width, height);
+  ctx.strokeStyle = "rgba(255,255,255,0.65)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `700 ${Math.max(14, Math.floor(height * 0.38))}px Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(code, x + width / 2, y + height / 2);
+
+  ctx.restore();
 }
 
 function loadImageForCanvas(src: string) {
