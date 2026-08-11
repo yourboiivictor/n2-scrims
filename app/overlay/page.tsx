@@ -359,7 +359,7 @@ export default function LiveOverlayPage() {
             </div>
           </header>
 
-          <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
+          <section className="min-h-0 flex-1 overflow-hidden bg-black/50 px-4 py-4">
             <div className="grid grid-cols-[38px_30px_42px_minmax(0,1fr)_54px_60px] items-center gap-1 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
               <span />
