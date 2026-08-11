@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { db } from "@/firebase";
+import { embeddedFlagUrl } from "@/lib/embeddedFlags";
 
 type LiveMatchSettings = {
   matchNumber: number;
@@ -400,11 +401,7 @@ function normalizeSquadName(name: string) {
 }
 
 function flagUrl(code: string) {
-  const cleanCode = code.trim().toLowerCase();
-
-  return /^[a-z]{2}$/.test(cleanCode)
-    ? `/flags/${cleanCode}.png`
-    : "";
+  return embeddedFlagUrl(code);
 }
 
 function InfoBox({
