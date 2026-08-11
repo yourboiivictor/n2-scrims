@@ -128,14 +128,14 @@ async function loadAllPlayerKills() {
 }
 
 export default function KillLeaderOverlay() {
-  const [leader, setLeader] = useState<PlayerKillLeader | null>(null);
+  const [leaders, setLeaders] = useState<PlayerKillLeader[]>([]);
 
   const refresh = useCallback(async () => {
     try {
       const players = await loadAllPlayerKills();
-      setLeader(players[0] || null);
+      setLeaders(players.slice(0, 10));
     } catch (error) {
-      console.error("Unable to load player kill leader:", error);
+      console.error("Unable to load player kill leaders:", error);
     }
   }, []);
 
@@ -149,46 +149,61 @@ export default function KillLeaderOverlay() {
     };
   }, [refresh]);
 
-  if (!leader) return null;
+  if (leaders.length === 0) return null;
 
   return (
     <main className="min-h-screen bg-transparent p-4 text-white">
-      <section className="flex w-[560px] items-center gap-4 rounded-2xl border border-white/40 bg-black/50 p-4 shadow-2xl">
-        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-white bg-white">
-          {leader.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={leader.logoUrl}
-              alt=""
-              className="h-full w-full object-contain p-2"
-            />
-          ) : (
-            <span className="font-black text-black">N²</span>
-          )}
+      <section className="w-[620px] overflow-hidden rounded-2xl border border-white/40 bg-black/60 shadow-2xl">
+        <div className="border-b border-white/25 bg-white px-5 py-3 text-black">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-black/60">
+            N² Scrims
+          </p>
+          <h1 className="mt-1 text-xl font-black uppercase">
+            Top 10 Player Kill Leaders
+          </h1>
         </div>
 
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-white">
-            All-Time Player Kill Leader
-          </p>
+        {leaders.map((leader, index) => (
+          <div
+            key={leader.playerKey}
+            className="grid grid-cols-[50px_52px_minmax(0,1fr)_90px] items-center gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
+          >
+            <div className="text-xl font-black">
+              #{index + 1}
+            </div>
 
-          <p className="mt-1 truncate text-2xl font-black">
-            {leader.playerName}
-          </p>
+            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-white bg-white">
+              {leader.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={leader.logoUrl}
+                  alt=""
+                  className="h-full w-full object-contain p-1"
+                />
+              ) : (
+                <span className="text-xs font-black text-black">N²</span>
+              )}
+            </div>
 
-          <p className="mt-1 truncate text-xs font-bold uppercase text-white/65">
-            {leader.squadName} · {leader.gamesPlayed} games
-          </p>
-        </div>
+            <div className="min-w-0">
+              <p className="truncate text-base font-black">
+                {leader.playerName}
+              </p>
+              <p className="truncate text-xs font-bold uppercase text-white/60">
+                {leader.squadName} · {leader.gamesPlayed} games
+              </p>
+            </div>
 
-        <div className="text-right">
-          <p className="text-4xl font-black text-white">
-            {leader.totalKills}
-          </p>
-          <p className="text-xs font-bold uppercase text-white/70">
-            Total Kills
-          </p>
-        </div>
+            <div className="text-right">
+              <p className="text-2xl font-black">
+                {leader.totalKills}
+              </p>
+              <p className="text-[10px] font-black uppercase tracking-wider text-white/60">
+                Kills
+              </p>
+            </div>
+          </div>
+        ))}
       </section>
     </main>
   );
