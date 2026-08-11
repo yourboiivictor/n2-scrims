@@ -266,5 +266,5 @@ export function flagUrl(code: string, width = 80) {
 
   if (!/^[a-z]{2}$/.test(cleanCode)) return "";
 
-  return `https://flagcdn.com/w${width}/${cleanCode}.png`;
+  return `/api/flag/${cleanCode}?w=${width}`;
 }

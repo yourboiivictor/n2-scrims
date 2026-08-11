@@ -65,33 +65,6 @@ export default function LiveOverlayPage() {
   >({});
 
   useEffect(() => {
-    return onSnapshot(collection(db, "squads"), (snapshot) => {
-      const countries: Record<
-        string,
-        { countryCode: string; countryName: string }
-      > = {};
-
-      snapshot.docs.forEach((squadDocument) => {
-        const data = squadDocument.data();
-        const country = {
-          countryCode:
-            typeof data.countryCode === "string" ? data.countryCode : "",
-          countryName:
-            typeof data.countryName === "string" ? data.countryName : "",
-        };
-
-        countries[squadDocument.id] = country;
-
-        if (typeof data.squadName === "string" && data.squadName.trim()) {
-          countries[`name:${normalizeSquadName(data.squadName)}`] = country;
-        }
-      });
-
-      setSquadCountries(countries);
-    });
-  }, []);
-
-  useEffect(() => {
     return onSnapshot(
       doc(db, "settings", "liveMatch"),
       (snapshot) => {
@@ -139,6 +112,33 @@ export default function LiveOverlayPage() {
         console.error("Unable to load tournament settings:", error);
       },
     );
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, "squads"), (snapshot) => {
+      const countries: Record<
+        string,
+        { countryCode: string; countryName: string }
+      > = {};
+
+      snapshot.docs.forEach((squadDocument) => {
+        const data = squadDocument.data();
+        const country = {
+          countryCode:
+            typeof data.countryCode === "string" ? data.countryCode : "",
+          countryName:
+            typeof data.countryName === "string" ? data.countryName : "",
+        };
+
+        countries[squadDocument.id] = country;
+
+        if (typeof data.squadName === "string" && data.squadName.trim()) {
+          countries[`name:${normalizeSquadName(data.squadName)}`] = country;
+        }
+      });
+
+      setSquadCountries(countries);
+    });
   }, []);
 
   useEffect(() => {
@@ -403,7 +403,7 @@ function flagUrl(code: string) {
   const cleanCode = code.trim().toLowerCase();
 
   return /^[a-z]{2}$/.test(cleanCode)
-    ? `https://flagcdn.com/w80/${cleanCode}.png`
+    ? `/api/flag/${cleanCode}`
     : "";
 }
 
