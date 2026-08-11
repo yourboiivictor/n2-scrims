@@ -139,7 +139,7 @@ async function loadSingleScrimPerformances() {
     .slice(0, 4);
 }
 
-export default function ChampionOverlay() {
+export default function MostPointsOverlay() {
   const [leaders, setLeaders] = useState<SingleScrimPerformance[]>([]);
 
   const refresh = useCallback(async () => {
