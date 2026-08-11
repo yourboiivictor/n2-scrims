@@ -451,12 +451,13 @@ function StandingRow({
 
       <div className="flex h-10 w-8 items-center justify-center">
         {standing.countryCode ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={flagUrl(standing.countryCode)}
-            alt=""
+          <div
             title={standing.countryName || standing.countryCode}
-            className="h-5 w-8 rounded-sm object-cover shadow-sm"
+            aria-label={standing.countryName || standing.countryCode}
+            className="h-5 w-8 rounded-sm bg-cover bg-center bg-no-repeat shadow-sm"
+            style={{
+              backgroundImage: `url("${flagUrl(standing.countryCode)}")`,
+            }}
           />
         ) : null}
       </div>
