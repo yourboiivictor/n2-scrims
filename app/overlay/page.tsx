@@ -399,256 +399,12 @@ function normalizeSquadName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function flagUrl(code: string) {
+  const cleanCode = code.trim().toLowerCase();
 
-
-function RasterStandingRow({
-  standing,
-  rank,
-  rankStyle,
-}: {
-  standing: Standing;
-  rank: number;
-  rankStyle: string;
-}) {
-  const [src, setSrc] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function renderRow() {
-      const canvas = document.createElement("canvas");
-      canvas.width = 760;
-      canvas.height = 92;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Row background / border
-      ctx.fillStyle = "rgba(0,0,0,0.2)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = "rgba(255,255,255,0.15)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
-
-      // Rank box
-      if (rank === 1) {
-        ctx.fillStyle = "#facc15";
-      } else if (rank === 2) {
-        ctx.fillStyle = "#e2e8f0";
-      } else {
-        ctx.fillStyle = "rgba(255,255,255,0.08)";
-      }
-      ctx.fillRect(14, 18, 54, 54);
-
-      ctx.fillStyle = rank === 1 ? "#422006" : "#ffffff";
-      ctx.font = "900 26px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(rank), 41, 45);
-
-      // Flag box + drawn flag
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(84, 14, 64, 64);
-      if (standing.countryCode) {
-        drawFlagOnCanvas(
-          ctx,
-          standing.countryCode.trim().toUpperCase(),
-          88,
-          22,
-          56,
-          48,
-        );
-      }
-
-      // Logo box
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(162, 14, 64, 64);
-
-      if (standing.logoUrl) {
-        try {
-          const logo = await loadImageForCanvas(standing.logoUrl);
-          drawContained(ctx, logo, 166, 18, 56, 56);
-        } catch {
-          ctx.fillStyle = "#111827";
-          ctx.font = "700 12px Arial";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText("LOGO", 194, 46);
-        }
-      }
-
-      // Team name
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "900 24px Arial";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      const team =
-        standing.squadName.length > 20
-          ? `${standing.squadName.slice(0, 19)}…`
-          : standing.squadName;
-      ctx.fillText(team.toUpperCase(), 246, 46);
-
-      // Kills
-      ctx.textAlign = "center";
-      ctx.font = "900 25px Arial";
-      ctx.fillText(String(standing.totalKills), 635, 46);
-
-      // Total
-      ctx.font = "900 28px Arial";
-      ctx.fillText(String(standing.totalPoints), 716, 46);
-
-      if (!cancelled) {
-        setSrc(canvas.toDataURL("image/png"));
-      }
-    }
-
-    renderRow().catch((error) => {
-      console.error("Unable to rasterize standings row:", error);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    standing.countryCode,
-    standing.logoUrl,
-    standing.squadName,
-    standing.totalKills,
-    standing.totalPoints,
-    rank,
-  ]);
-
-  if (!src) {
-    return <div className="h-[56px] w-full" />;
-  }
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt=""
-      className="block h-[56px] w-full object-fill"
-    />
-  );
-}
-
-function drawFlagOnCanvas(
-  ctx: CanvasRenderingContext2D,
-  code: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, width, height);
-  ctx.clip();
-
-  if (code === "KI") {
-    ctx.fillStyle = "#CE1126";
-    ctx.fillRect(x, y, width, height / 2);
-    ctx.fillStyle = "#003F87";
-    ctx.fillRect(x, y + height / 2, width, height / 2);
-
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = Math.max(2, height * 0.07);
-    for (let row = 0; row < 3; row += 1) {
-      const baseY = y + height * (0.58 + row * 0.13);
-      ctx.beginPath();
-      ctx.moveTo(x, baseY);
-      for (let i = 0; i <= 8; i += 1) {
-        const px = x + (width / 8) * i;
-        const py =
-          baseY + (i % 2 === 0 ? -height * 0.035 : height * 0.035);
-        ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = "#FCD116";
-    ctx.beginPath();
-    ctx.arc(x + width / 2, y + height * 0.32, height * 0.13, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (code === "TO") {
-    ctx.fillStyle = "#C10000";
-    ctx.fillRect(x, y, width, height);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x, y, width * 0.46, height * 0.5);
-    ctx.fillStyle = "#C10000";
-    ctx.fillRect(x + width * 0.19, y + height * 0.06, width * 0.09, height * 0.38);
-    ctx.fillRect(x + width * 0.10, y + height * 0.19, width * 0.27, height * 0.12);
-  } else if (code === "SB") {
-    ctx.fillStyle = "#0051BA";
-    ctx.fillRect(x, y, width, height);
-    ctx.fillStyle = "#215B33";
-    ctx.beginPath();
-    ctx.moveTo(x, y + height);
-    ctx.lineTo(x + width, y);
-    ctx.lineTo(x + width, y + height);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.strokeStyle = "#FCD116";
-    ctx.lineWidth = Math.max(4, height * 0.13);
-    ctx.beginPath();
-    ctx.moveTo(x - 2, y + height + 2);
-    ctx.lineTo(x + width + 2, y - 2);
-    ctx.stroke();
-  } else if (code === "US") {
-    const stripe = height / 13;
-    for (let i = 0; i < 13; i += 1) {
-      ctx.fillStyle = i % 2 === 0 ? "#B22234" : "#ffffff";
-      ctx.fillRect(x, y + stripe * i, width, stripe + 0.5);
-    }
-    ctx.fillStyle = "#3C3B6E";
-    ctx.fillRect(x, y, width * 0.42, stripe * 7);
-  } else {
-    ctx.fillStyle = "#111827";
-    ctx.fillRect(x, y, width, height);
-    ctx.strokeStyle = "rgba(255,255,255,0.65)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = `700 ${Math.max(14, Math.floor(height * 0.38))}px Arial`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(code, x + width / 2, y + height / 2);
-  }
-
-  ctx.restore();
-}
-
-function loadImageForCanvas(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Unable to load image: ${src}`));
-    image.src = src;
-  });
-}
-
-function drawContained(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
-  const ratio = Math.min(
-    width / image.naturalWidth,
-    height / image.naturalHeight,
-  );
-  const drawWidth = image.naturalWidth * ratio;
-  const drawHeight = image.naturalHeight * ratio;
-  const drawX = x + (width - drawWidth) / 2;
-  const drawY = y + (height - drawHeight) / 2;
-
-  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  return /^[a-z]{2}$/.test(cleanCode)
+    ? `/flags/${cleanCode}.png`
+    : "";
 }
 
 function InfoBox({
@@ -687,8 +443,53 @@ function StandingRow({
           : " text-white";
 
   return (
-    <div className="border border-white/15 bg-black/20 px-3 py-2">
-      <RasterStandingRow standing={standing} rank={rank} rankStyle={rankStyle} />
+    <div
+      className="grid grid-cols-[42px_34px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+    >
+      <div
+        className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
+      >
+        {rank}
+      </div>
+
+      <div className="flex h-10 w-8 items-center justify-center">
+        {standing.countryCode ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={flagUrl(standing.countryCode)}
+            alt=""
+            title={standing.countryName || standing.countryCode}
+            className="h-5 w-8 rounded-sm object-cover shadow-sm"
+          />
+        ) : null}
+      </div>
+
+      <div className="flex h-10 w-10 items-center justify-center overflow-hidden border border-white bg-white">
+        {standing.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={standing.logoUrl}
+            alt=""
+            className="h-full w-full object-contain p-1"
+          />
+        ) : (
+          <span className="text-[6px] font-black text-black">
+            LOGO
+          </span>
+        )}
+      </div>
+
+      <p className="truncate text-[14px] font-black uppercase">
+        {standing.squadName}
+      </p>
+
+      <p className="text-center text-base font-black text-white">
+        {standing.totalKills}
+      </p>
+
+      <p className="text-center text-lg font-black text-white">
+        {standing.totalPoints}
+      </p>
     </div>
   );
 }
