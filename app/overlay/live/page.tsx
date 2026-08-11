@@ -9,7 +9,6 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { db } from "@/firebase";
-import { flagUrl } from "@/lib/countries";
 
 type LiveMatchSettings = {
   matchNumber: number;
@@ -126,7 +125,6 @@ export default function LiveOverlayPage() {
 
         snapshot.docs.forEach((squadDocument) => {
           const data = squadDocument.data();
-
           const country = {
             countryCode:
               typeof data.countryCode === "string" ? data.countryCode : "",
@@ -134,12 +132,10 @@ export default function LiveOverlayPage() {
               typeof data.countryName === "string" ? data.countryName : "",
           };
 
-          // Keep both keys because a standings document ID may differ from
-          // the original squad document ID.
           countries[squadDocument.id] = country;
 
           if (typeof data.squadName === "string" && data.squadName.trim()) {
-            countries[`name:${data.squadName.trim().toLowerCase()}`] = country;
+            countries[`name:${normalizeSquadName(data.squadName)}`] = country;
           }
         });
 
@@ -382,13 +378,13 @@ export default function LiveOverlayPage() {
                       countryCode:
                         squadCountries[standing.squadId]?.countryCode ||
                         squadCountries[
-                          `name:${standing.squadName.trim().toLowerCase()}`
+                          `name:${normalizeSquadName(standing.squadName)}`
                         ]?.countryCode ||
                         "",
                       countryName:
                         squadCountries[standing.squadId]?.countryName ||
                         squadCountries[
-                          `name:${standing.squadName.trim().toLowerCase()}`
+                          `name:${normalizeSquadName(standing.squadName)}`
                         ]?.countryName ||
                         "",
                     }}
@@ -403,6 +399,17 @@ export default function LiveOverlayPage() {
       </div>
     </main>
   );
+}
+
+function normalizeSquadName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function flagUrl(code: string) {
+  const cleanCode = code.trim().toLowerCase();
+  return /^[a-z]{2}$/.test(cleanCode)
+    ? `https://flagcdn.com/w80/${cleanCode}.png`
+    : "";
 }
 
 function InfoBox({
@@ -454,7 +461,7 @@ function StandingRow({
         {standing.countryCode ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={flagUrl(standing.countryCode, 40)}
+            src={flagUrl(standing.countryCode)}
             alt=""
             title={standing.countryName || standing.countryCode}
             className="h-5 w-8 rounded-sm object-cover shadow-sm"
