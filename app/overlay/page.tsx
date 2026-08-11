@@ -360,7 +360,7 @@ export default function LiveOverlayPage() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
-            <div className="grid grid-cols-[42px_46px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+            <div className="grid grid-cols-[38px_30px_42px_minmax(0,1fr)_54px_60px] items-center gap-1 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
               <span>Rank</span>
               <span />
               <span />
@@ -444,7 +444,7 @@ function StandingRow({
 
   return (
     <div
-      className="grid grid-cols-[42px_46px_46px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+      className="grid grid-cols-[38px_30px_42px_minmax(0,1fr)_54px_60px] items-center gap-1 border border-white/15 bg-black/20 px-3 py-3"
     >
       <div
         className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
@@ -452,13 +452,13 @@ function StandingRow({
         {rank}
       </div>
 
-      <div className="flex h-10 w-10 items-center justify-center overflow-hidden bg-transparent">
+      <div className="flex h-7 w-7 items-center justify-center overflow-hidden bg-transparent">
         {standing.countryCode ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`/api/country-flag/${encodeURIComponent(standing.countryCode.trim().toLowerCase())}`}
             alt={standing.countryName || `${standing.countryCode} flag`}
-            className="h-full w-full object-contain"
+            className="h-[22px] w-[28px] object-fill"
           />
         ) : (
           <span className="text-[6px] font-black text-black">
