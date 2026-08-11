@@ -403,7 +403,7 @@ function flagUrl(code: string) {
   const cleanCode = code.trim().toLowerCase();
 
   return /^[a-z]{2}$/.test(cleanCode)
-    ? `/api/flag/${cleanCode}`
+    ? `/flags/${cleanCode}.png`
     : "";
 }
 

@@ -261,10 +261,10 @@ export function getCountryByCode(code: string) {
   );
 }
 
-export function flagUrl(code: string, width = 80) {
+export function flagUrl(code: string, _width = 80) {
   const cleanCode = code.trim().toLowerCase();
 
   if (!/^[a-z]{2}$/.test(cleanCode)) return "";
 
-  return `/api/flag/${cleanCode}?w=${width}`;
+  return `/flags/${cleanCode}.png`;
 }
