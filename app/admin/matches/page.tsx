@@ -49,6 +49,8 @@ type Squad = {
   id: string;
   squadName: string;
   logoUrl?: string;
+  countryCode?: string;
+  countryName?: string;
   players?: Array<string | SquadPlayer>;
   status?: string;
   slot?: number;
@@ -64,6 +66,8 @@ type LiveSquad = {
   squadId: string;
   squadName: string;
   logoUrl: string;
+  countryCode: string;
+  countryName: string;
   slot: number;
   placement: number | null;
   players: PlayerControl[];
@@ -183,6 +187,8 @@ function createLiveSquad(
     squadId: squad.id,
     squadName: squad.squadName || "Unnamed Squad",
     logoUrl: squad.logoUrl || "",
+    countryCode: squad.countryCode || "",
+    countryName: squad.countryName || "",
     slot,
     placement: null,
     players,
@@ -429,6 +435,8 @@ return {};
           squadId: squad.squadId,
           squadName: squad.squadName,
           logoUrl: squad.logoUrl,
+          countryCode: squad.countryCode,
+          countryName: squad.countryName,
           slot: squad.slot,
           playerNames: squad.players.map(
             (player) => player.name,
@@ -1143,6 +1151,8 @@ return {};
             squadId: squad.id,
             squadName: total.squadName,
             logoUrl: total.logoUrl,
+            countryCode: squad.countryCode || "",
+            countryName: squad.countryName || "",
             slot: total.slot,
             playerNames: total.playerNames,
             currentMatchNumber: liveSettings.matchNumber,
