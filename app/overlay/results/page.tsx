@@ -9,7 +9,6 @@ import {
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "@/firebase";
-import { flagUrl } from "@/lib/countries";
 
 type LiveMatchSettings = {
   matchNumber: number;
@@ -51,6 +50,7 @@ type Standing = {
   logoUrl: string;
   countryCode?: string;
   countryName?: string;
+  flagUrl?: string;
   totalKills: number;
   totalPoints: number;
 };
@@ -75,7 +75,7 @@ export default function ResultsOverlayPage() {
   const [results, setResults] = useState<MatchResult[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [squadCountries, setSquadCountries] = useState<
-    Record<string, { countryCode: string; countryName: string }>
+    Record<string, { countryCode: string; countryName: string; flagUrl: string }>
   >({});
 
   useEffect(() => {
@@ -190,31 +190,33 @@ export default function ResultsOverlayPage() {
   }, [liveMatch.matchNumber]);
 
   useEffect(() => {
-    return onSnapshot(
-      collection(db, "squads"),
-      (snapshot) => {
-        const countries: Record<
-          string,
-          { countryCode: string; countryName: string }
-        > = {};
+    return onSnapshot(collection(db, "squads"), (snapshot) => {
+      const countries: Record<
+        string,
+        { countryCode: string; countryName: string; flagUrl: string }
+      > = {};
 
-        snapshot.docs.forEach((squadDocument) => {
-          const data = squadDocument.data();
+      snapshot.docs.forEach((squadDocument) => {
+        const data = squadDocument.data();
 
-          countries[squadDocument.id] = {
-            countryCode:
-              typeof data.countryCode === "string" ? data.countryCode : "",
-            countryName:
-              typeof data.countryName === "string" ? data.countryName : "",
-          };
-        });
+        const country = {
+          countryCode:
+            typeof data.countryCode === "string" ? data.countryCode : "",
+          countryName:
+            typeof data.countryName === "string" ? data.countryName : "",
+          flagUrl:
+            typeof data.flagUrl === "string" ? data.flagUrl : "",
+        };
 
-        setSquadCountries(countries);
-      },
-      (error) => {
-        console.error("Unable to load squad countries:", error);
-      },
-    );
+        countries[squadDocument.id] = country;
+
+        if (typeof data.squadName === "string" && data.squadName.trim()) {
+          countries[`name:${normalizeSquadName(data.squadName)}`] = country;
+        }
+      });
+
+      setSquadCountries(countries);
+    });
   }, []);
 
   useEffect(() => {
@@ -237,6 +239,12 @@ export default function ResultsOverlayPage() {
                 : "Unnamed Squad",
             logoUrl:
               typeof data.logoUrl === "string" ? data.logoUrl : "",
+            countryCode:
+              typeof data.countryCode === "string" ? data.countryCode : "",
+            countryName:
+              typeof data.countryName === "string" ? data.countryName : "",
+            flagUrl:
+              typeof data.flagUrl === "string" ? data.flagUrl : "",
             totalKills: Number(data.totalKills) || 0,
             totalPoints: Number(data.totalPoints) || 0,
           };
@@ -494,9 +502,26 @@ export default function ResultsOverlayPage() {
                     standing={{
                       ...standing,
                       countryCode:
-                        squadCountries[standing.squadId]?.countryCode || "",
+                        standing.countryCode ||
+                        squadCountries[standing.squadId]?.countryCode ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryCode ||
+                        "",
                       countryName:
-                        squadCountries[standing.squadId]?.countryName || "",
+                        standing.countryName ||
+                        squadCountries[standing.squadId]?.countryName ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryName ||
+                        "",
+                      flagUrl:
+                        standing.flagUrl ||
+                        squadCountries[standing.squadId]?.flagUrl ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.flagUrl ||
+                        "",
                     }}
                     rank={index + 1}
                   />
@@ -508,6 +533,10 @@ export default function ResultsOverlayPage() {
       </div>
     </main>
   );
+}
+
+function normalizeSquadName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function HeaderStat({
@@ -669,16 +698,22 @@ function StandingRow({
         {rank}
       </div>
 
-      <div className="flex h-8 w-8 items-center justify-center">
+      <div className="flex h-8 w-8 items-center justify-center overflow-hidden border border-black bg-white">
         {standing.countryCode ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={flagUrl(standing.countryCode, 40)}
+            src={`/api/country-flag/${encodeURIComponent(
+              (standing.countryCode || "").toLowerCase(),
+            )}`}
             alt=""
             title={standing.countryName || standing.countryCode}
-            className="h-4 w-7 rounded-sm object-cover shadow-sm"
+            className="h-full w-full object-contain p-1"
           />
-        ) : null}
+        ) : (
+          <span className="text-[5px] font-black text-black">
+            FLAG
+          </span>
+        )}
       </div>
 
       <div className="flex h-8 w-8 items-center justify-center overflow-hidden border border-black bg-white">
