@@ -4,117 +4,73 @@ import { collection, getDocs } from "firebase/firestore";
 import { useCallback, useEffect, useState } from "react";
 import { db } from "@/firebase";
 
-type SingleScrimPerformance = {
+type ArchivedScrimPerformance = {
   id: string;
+  archiveId: string;
+  tournamentName: string;
+  season: string;
   squadId: string;
   squadName: string;
   logoUrl: string;
-  matchNumber: number;
-  totalPoints: number;
+  matchesPlayed: number;
+  chickenDinners: number;
   totalKills: number;
-  placement: number;
-  source: "current" | "archive";
+  placementPoints: number;
+  totalPoints: number;
 };
 
-async function loadSingleScrimPerformances() {
-  const performances: SingleScrimPerformance[] = [];
+async function loadArchivedScrimPointLeaders() {
+  const performances: ArchivedScrimPerformance[] = [];
 
-  // Current / history matches.
-  const currentMatches = await getDocs(collection(db, "matches"));
-
-  for (const matchDocument of currentMatches.docs) {
-    const matchData = matchDocument.data();
-    const matchNumber =
-      Number(matchData.matchNumber) ||
-      Number(matchDocument.id.replace("match-", "")) ||
-      0;
-
-    const results = await getDocs(
-      collection(db, "matches", matchDocument.id, "results"),
-    );
-
-    results.docs.forEach((resultDocument) => {
-      const data = resultDocument.data();
-
-      performances.push({
-        id: `current-${matchDocument.id}-${resultDocument.id}`,
-        squadId:
-          typeof data.squadId === "string" && data.squadId
-            ? data.squadId
-            : resultDocument.id,
-        squadName:
-          typeof data.squadName === "string" && data.squadName
-            ? data.squadName
-            : "Unnamed Squad",
-        logoUrl:
-          typeof data.logoUrl === "string" ? data.logoUrl : "",
-        matchNumber:
-          Number(data.matchNumber) || matchNumber,
-        totalPoints: Number(data.totalPoints) || 0,
-        totalKills: Number(data.totalKills) || 0,
-        placement: Number(data.placement) || 0,
-        source: "current",
-      });
-    });
-  }
-
-  // Archived tournament matches.
   const archives = await getDocs(
     collection(db, "tournamentArchives"),
   );
 
   for (const archiveDocument of archives.docs) {
-    const archivedMatches = await getDocs(
+    const archiveData = archiveDocument.data();
+
+    const tournamentName =
+      typeof archiveData.tournamentName === "string" &&
+      archiveData.tournamentName.trim()
+        ? archiveData.tournamentName.trim()
+        : "Archived Scrim";
+
+    const season =
+      typeof archiveData.season === "string"
+        ? archiveData.season
+        : "";
+
+    const standings = await getDocs(
       collection(
         db,
         "tournamentArchives",
         archiveDocument.id,
-        "matches",
+        "standings",
       ),
     );
 
-    for (const matchDocument of archivedMatches.docs) {
-      const matchData = matchDocument.data();
-      const matchNumber =
-        Number(matchData.matchNumber) ||
-        Number(matchDocument.id.replace("match-", "")) ||
-        0;
+    standings.docs.forEach((standingDocument) => {
+      const data = standingDocument.data();
 
-      const results = await getDocs(
-        collection(
-          db,
-          "tournamentArchives",
-          archiveDocument.id,
-          "matches",
-          matchDocument.id,
-          "results",
-        ),
-      );
-
-      results.docs.forEach((resultDocument) => {
-        const data = resultDocument.data();
-
-        performances.push({
-          id: `archive-${archiveDocument.id}-${matchDocument.id}-${resultDocument.id}`,
-          squadId:
-            typeof data.squadId === "string" && data.squadId
-              ? data.squadId
-              : resultDocument.id,
-          squadName:
-            typeof data.squadName === "string" && data.squadName
-              ? data.squadName
-              : "Unnamed Squad",
-          logoUrl:
-            typeof data.logoUrl === "string" ? data.logoUrl : "",
-          matchNumber:
-            Number(data.matchNumber) || matchNumber,
-          totalPoints: Number(data.totalPoints) || 0,
-          totalKills: Number(data.totalKills) || 0,
-          placement: Number(data.placement) || 0,
-          source: "archive",
-        });
+      performances.push({
+        id: `${archiveDocument.id}-${standingDocument.id}`,
+        archiveId: archiveDocument.id,
+        tournamentName,
+        season,
+        squadId: standingDocument.id,
+        squadName:
+          typeof data.squadName === "string" && data.squadName.trim()
+            ? data.squadName.trim()
+            : "Unnamed Squad",
+        logoUrl:
+          typeof data.logoUrl === "string" ? data.logoUrl : "",
+        matchesPlayed: Number(data.matchesPlayed) || 0,
+        chickenDinners: Number(data.chickenDinners) || 0,
+        totalKills: Number(data.totalKills) || 0,
+        placementPoints: Number(data.placementPoints) || 0,
+        totalPoints: Number(data.totalPoints) || 0,
       });
-    }
+    });
   }
 
   return performances
@@ -127,11 +83,8 @@ async function loadSingleScrimPerformances() {
         return b.totalKills - a.totalKills;
       }
 
-      if (a.placement !== b.placement) {
-        return (
-          (a.placement || Number.MAX_SAFE_INTEGER) -
-          (b.placement || Number.MAX_SAFE_INTEGER)
-        );
+      if (b.chickenDinners !== a.chickenDinners) {
+        return b.chickenDinners - a.chickenDinners;
       }
 
       return a.squadName.localeCompare(b.squadName);
@@ -140,13 +93,16 @@ async function loadSingleScrimPerformances() {
 }
 
 export default function MostPointsOverlay() {
-  const [leaders, setLeaders] = useState<SingleScrimPerformance[]>([]);
+  const [leaders, setLeaders] = useState<ArchivedScrimPerformance[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      setLeaders(await loadSingleScrimPerformances());
+      setLeaders(await loadArchivedScrimPointLeaders());
     } catch (error) {
-      console.error("Unable to load single-scrim point leaders:", error);
+      console.error("Unable to load archived scrim point leaders:", error);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -160,8 +116,6 @@ export default function MostPointsOverlay() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  if (leaders.length === 0) return null;
-
   return (
     <main className="min-h-screen bg-transparent p-6 text-white">
       <section className="mx-auto w-[760px] overflow-hidden rounded-[28px] border border-white/30 bg-black/60 shadow-2xl">
@@ -171,55 +125,72 @@ export default function MostPointsOverlay() {
           </p>
 
           <h1 className="mt-1 text-2xl font-black uppercase">
-            Top 4 Single-Scrim Points
+            Top 4 Most Points In One Scrim
           </h1>
+
+          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-black/50">
+            Archived tournament totals
+          </p>
         </div>
 
-        {leaders.map((team, index) => (
-          <div
-            key={team.id}
-            className="grid grid-cols-[60px_64px_minmax(0,1fr)_120px] items-center gap-4 border-b border-white/10 px-5 py-4 last:border-b-0"
-          >
-            <div className="text-2xl font-black">
-              #{index + 1}
-            </div>
-
-            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white bg-white">
-              {team.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={team.logoUrl}
-                  alt=""
-                  className="h-full w-full object-contain p-2"
-                />
-              ) : (
-                <span className="font-black text-black">N²</span>
-              )}
-            </div>
-
-            <div className="min-w-0">
-              <p className="truncate text-xl font-black uppercase">
-                {team.squadName}
-              </p>
-
-              <p className="mt-1 text-xs font-bold uppercase text-white/60">
-                Match {team.matchNumber} · {team.totalKills} kills
-                {team.placement ? ` · #${team.placement}` : ""}
-                {team.source === "archive" ? " · archived" : ""}
-              </p>
-            </div>
-
-            <div className="text-right">
-              <p className="text-3xl font-black">
-                {team.totalPoints}
-              </p>
-
-              <p className="text-[10px] font-black uppercase tracking-wider text-white/60">
-                Points
-              </p>
-            </div>
+        {loading ? (
+          <div className="px-6 py-10 text-center text-sm font-bold text-white/60">
+            Loading archived scrims...
           </div>
-        ))}
+        ) : leaders.length === 0 ? (
+          <div className="px-6 py-10 text-center text-sm font-bold text-white/60">
+            No archived scrim standings found.
+          </div>
+        ) : (
+          leaders.map((team, index) => (
+            <div
+              key={team.id}
+              className="grid grid-cols-[60px_64px_minmax(0,1fr)_120px] items-center gap-4 border-b border-white/10 px-5 py-4 last:border-b-0"
+            >
+              <div className="text-2xl font-black">
+                #{index + 1}
+              </div>
+
+              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white bg-white">
+                {team.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={team.logoUrl}
+                    alt=""
+                    className="h-full w-full object-contain p-2"
+                  />
+                ) : (
+                  <span className="font-black text-black">N²</span>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate text-xl font-black uppercase">
+                  {team.squadName}
+                </p>
+
+                <p className="mt-1 truncate text-xs font-bold uppercase text-white/60">
+                  {team.tournamentName}
+                  {team.season ? ` · Season ${team.season}` : ""}
+                </p>
+
+                <p className="mt-1 text-[10px] font-bold uppercase text-white/45">
+                  {team.matchesPlayed} matches · {team.totalKills} kills · {team.chickenDinners} dinners
+                </p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-3xl font-black">
+                  {team.totalPoints}
+                </p>
+
+                <p className="text-[10px] font-black uppercase tracking-wider text-white/60">
+                  Scrim Points
+                </p>
+              </div>
+            </div>
+          ))
+        )}
       </section>
     </main>
   );
