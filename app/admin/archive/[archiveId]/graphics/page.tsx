@@ -126,7 +126,15 @@ export default function ArchiveGraphicsPage() {
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, 1080, 1920);
 
-    drawPolynesianPattern(ctx, 1080, 1920);
+    try {
+      const background = await loadCanvasImage("/poly.png");
+      drawImageCover(ctx, background, 0, 0, 1080, 1920);
+
+      ctx.fillStyle = "rgba(0,0,0,0.48)";
+      ctx.fillRect(0, 0, 1080, 1920);
+    } catch (error) {
+      console.warn("Unable to load /poly.png background:", error);
+    }
 
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
@@ -348,6 +356,26 @@ function loadCanvasImage(src: string) {
   });
 }
 
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const scale = Math.max(
+    width / image.naturalWidth,
+    height / image.naturalHeight,
+  );
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
 function drawImageContained(
   ctx: CanvasRenderingContext2D,
   image: HTMLImageElement,
@@ -396,40 +424,4 @@ function roundedRect(
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
-}
-
-function drawPolynesianPattern(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,0.05)";
-  ctx.lineWidth = 4;
-
-  const cell = 120;
-
-  for (let y = 340; y < height - 70; y += cell) {
-    for (let x = -cell; x < width + cell; x += cell) {
-      const cx = x + ((Math.floor(y / cell) % 2) * cell) / 2;
-
-      ctx.beginPath();
-      ctx.moveTo(cx, y + 48);
-      ctx.lineTo(cx + 30, y + 18);
-      ctx.lineTo(cx + 60, y + 48);
-      ctx.lineTo(cx + 90, y + 18);
-      ctx.lineTo(cx + 120, y + 48);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(cx + 30, y + 76);
-      ctx.lineTo(cx + 60, y + 56);
-      ctx.lineTo(cx + 90, y + 76);
-      ctx.lineTo(cx + 60, y + 96);
-      ctx.closePath();
-      ctx.stroke();
-    }
-  }
-
-  ctx.restore();
 }
