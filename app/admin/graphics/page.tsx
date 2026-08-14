@@ -22,6 +22,7 @@ export default function ResultsGraphicsPage() {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
   const [squadLogos, setSquadLogos] = useState<Record<string, string>>({});
+  const [squadFlags, setSquadFlags] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -37,18 +38,32 @@ export default function ResultsGraphicsPage() {
         if (!active) return;
 
         const logos: Record<string, string> = {};
+        const flags: Record<string, string> = {};
 
         squadsSnapshot.docs.forEach((squadDocument) => {
           const data = squadDocument.data();
           const logoUrl =
             typeof data.logoUrl === "string" ? data.logoUrl.trim() : "";
+          const countryCode =
+            typeof data.countryCode === "string"
+              ? data.countryCode.trim().toUpperCase()
+              : "";
+          const squadName =
+            typeof data.squadName === "string" ? data.squadName.trim().toLowerCase() : "";
 
           if (logoUrl) {
             logos[squadDocument.id] = logoUrl;
+            if (squadName) logos[`name:${squadName}`] = logoUrl;
+          }
+
+          if (countryCode) {
+            flags[squadDocument.id] = countryCode;
+            if (squadName) flags[`name:${squadName}`] = countryCode;
           }
         });
 
         setSquadLogos(logos);
+        setSquadFlags(flags);
         setStandings(rows);
 
         if (snapshot.exists()) {
@@ -147,7 +162,9 @@ export default function ResultsGraphicsPage() {
     const topTen = standings.slice(0, 10);
     const loadedLogos = await Promise.all(
       topTen.map(async (row) => {
-        const logoUrl = squadLogos[row.squadId];
+        const logoUrl =
+          squadLogos[row.squadId] ||
+          squadLogos[`name:${row.squadName.trim().toLowerCase()}`];
 
         if (!logoUrl) return null;
 
@@ -155,6 +172,23 @@ export default function ResultsGraphicsPage() {
           return await loadCanvasImage(logoUrl);
         } catch (error) {
           console.warn(`Unable to load logo for ${row.squadName}:`, error);
+          return null;
+        }
+      }),
+    );
+
+    const loadedFlags = await Promise.all(
+      topTen.map(async (row) => {
+        const countryCode =
+          squadFlags[row.squadId] ||
+          squadFlags[`name:${row.squadName.trim().toLowerCase()}`];
+
+        if (!countryCode) return null;
+
+        try {
+          return await loadCanvasImage(`/api/country-flag/${encodeURIComponent(countryCode)}`);
+        } catch (error) {
+          console.warn(`Unable to load flag for ${row.squadName}:`, error);
           return null;
         }
       }),
@@ -172,8 +206,18 @@ export default function ResultsGraphicsPage() {
       ctx.font = "900 34px Arial";
       ctx.fillText(`#${index + 1}`, 100, y + 58);
 
+      const flag = loadedFlags[index];
+      const flagX = 190;
+      const flagY = y + 29;
+      const flagWidth = 48;
+      const flagHeight = 34;
+
+      if (flag) {
+        ctx.drawImage(flag, flagX, flagY, flagWidth, flagHeight);
+      }
+
       const logo = loadedLogos[index];
-      const logoX = 205;
+      const logoX = flag ? 252 : 205;
       const logoY = y + 12;
       const logoSize = 68;
 
@@ -197,7 +241,7 @@ export default function ResultsGraphicsPage() {
       ctx.textAlign = "left";
       ctx.fillStyle = "#ffffff";
       ctx.font = "900 30px Arial";
-      ctx.fillText(row.squadName.slice(0, 21), 295, y + 57);
+      ctx.fillText(row.squadName.slice(0, 21), flag ? 340 : 295, y + 57);
 
       ctx.textAlign = "right";
       ctx.fillStyle = "#ffffff";
@@ -294,10 +338,27 @@ export default function ResultsGraphicsPage() {
                       #{index + 1}
                     </span>
 
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white bg-white p-1">
-                      {squadLogos[row.squadId] ? (
+                    {(() => {
+                      const countryCode =
+                        squadFlags[row.squadId] ||
+                        squadFlags[`name:${row.squadName.trim().toLowerCase()}`];
+                      return countryCode ? (
                         <img
-                          src={squadLogos[row.squadId]}
+                          src={`/api/country-flag/${encodeURIComponent(countryCode)}`}
+                          alt={`${row.squadName} flag`}
+                          className="h-6 w-9 shrink-0 object-cover"
+                        />
+                      ) : null;
+                    })()}
+
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white bg-white p-1">
+                      {squadLogos[row.squadId] ||
+                      squadLogos[`name:${row.squadName.trim().toLowerCase()}`] ? (
+                        <img
+                          src={
+                            squadLogos[row.squadId] ||
+                            squadLogos[`name:${row.squadName.trim().toLowerCase()}`]
+                          }
                           alt={`${row.squadName} logo`}
                           className="h-full w-full object-contain"
                         />
