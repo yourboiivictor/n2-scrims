@@ -21,6 +21,8 @@ type ArchivedStanding = {
   rank: number;
   squadName: string;
   logoUrl: string;
+  countryCode?: string;
+  countryName?: string;
   chickenDinners: number;
   totalKills: number;
   totalPoints: number;
@@ -36,6 +38,9 @@ export default function ArchiveGraphicsPage() {
   const [title, setTitle] = useState("Tournament Archive");
   const [season, setSeason] = useState("");
   const [standings, setStandings] = useState<ArchivedStanding[]>([]);
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
+  >({});
   const [message, setMessage] = useState("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -56,20 +61,22 @@ export default function ArchiveGraphicsPage() {
 
     void (async () => {
       try {
-        const [archiveSnapshot, standingsSnapshot] = await Promise.all([
-          getDoc(doc(db, "tournamentArchives", archiveId)),
-          getDocs(
-            query(
-              collection(
-                db,
-                "tournamentArchives",
-                archiveId,
-                "standings",
+        const [archiveSnapshot, standingsSnapshot, squadsSnapshot] =
+          await Promise.all([
+            getDoc(doc(db, "tournamentArchives", archiveId)),
+            getDocs(
+              query(
+                collection(
+                  db,
+                  "tournamentArchives",
+                  archiveId,
+                  "standings",
+                ),
+                orderBy("rank", "asc"),
               ),
-              orderBy("rank", "asc"),
             ),
-          ),
-        ]);
+            getDocs(collection(db, "squads")),
+          ]);
 
         if (archiveSnapshot.exists()) {
           const data = archiveSnapshot.data();
@@ -82,6 +89,36 @@ export default function ArchiveGraphicsPage() {
             typeof data.season === "string" ? data.season : "",
           );
         }
+
+        const countries: Record<
+          string,
+          { countryCode: string; countryName: string }
+        > = {};
+
+        squadsSnapshot.docs.forEach((squadDocument) => {
+          const data = squadDocument.data();
+
+          const country = {
+            countryCode:
+              typeof data.countryCode === "string"
+                ? data.countryCode.trim().toUpperCase()
+                : "",
+            countryName:
+              typeof data.countryName === "string"
+                ? data.countryName.trim()
+                : "",
+          };
+
+          countries[squadDocument.id] = country;
+
+          if (typeof data.squadName === "string" && data.squadName.trim()) {
+            countries[
+              `name:${normalizeSquadName(data.squadName)}`
+            ] = country;
+          }
+        });
+
+        setSquadCountries(countries);
 
         const rows: ArchivedStanding[] = standingsSnapshot.docs.map(
           (standingDocument) => {
@@ -96,6 +133,14 @@ export default function ArchiveGraphicsPage() {
               logoUrl:
                 typeof data.logoUrl === "string"
                   ? data.logoUrl
+                  : "",
+              countryCode:
+                typeof data.countryCode === "string"
+                  ? data.countryCode
+                  : "",
+              countryName:
+                typeof data.countryName === "string"
+                  ? data.countryName
                   : "",
               chickenDinners:
                 Number(data.chickenDinners) || 0,
@@ -126,15 +171,7 @@ export default function ArchiveGraphicsPage() {
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, 1080, 1920);
 
-    try {
-      const background = await loadCanvasImage("/poly.png");
-      drawImageCover(ctx, background, 0, 0, 1080, 1920);
-
-      ctx.fillStyle = "rgba(0,0,0,0.48)";
-      ctx.fillRect(0, 0, 1080, 1920);
-    } catch (error) {
-      console.warn("Unable to load /poly.png background:", error);
-    }
+    drawPolynesianPattern(ctx, 1080, 1920);
 
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
@@ -165,6 +202,34 @@ export default function ArchiveGraphicsPage() {
       }),
     );
 
+    const loadedFlags = await Promise.all(
+      topTen.map(async (row) => {
+        const countryCode =
+          row.countryCode ||
+          squadCountries[row.squadId]?.countryCode ||
+          squadCountries[
+            `name:${normalizeSquadName(row.squadName)}`
+          ]?.countryCode ||
+          "";
+
+        if (!countryCode) return null;
+
+        try {
+          return await loadCanvasImage(
+            `/api/country-flag/${encodeURIComponent(
+              countryCode.toLowerCase(),
+            )}`,
+          );
+        } catch (error) {
+          console.warn(
+            `Unable to load flag for ${row.squadName}:`,
+            error,
+          );
+          return null;
+        }
+      }),
+    );
+
     topTen.forEach((row, index) => {
       const y = 430 + index * 128;
 
@@ -185,7 +250,23 @@ export default function ArchiveGraphicsPage() {
       ctx.font = "900 32px Arial";
       ctx.fillText(`#${row.rank || index + 1}`, 90, y + 64);
 
-      const logoX = 185;
+      const flag = loadedFlags[index];
+      const flagX = 175;
+      const flagY = y + 34;
+      const flagWidth = 44;
+      const flagHeight = 30;
+
+      if (flag) {
+        ctx.drawImage(
+          flag,
+          flagX,
+          flagY,
+          flagWidth,
+          flagHeight,
+        );
+      }
+
+      const logoX = flag ? 235 : 185;
       const logoY = y + 14;
       const logoSize = 76;
 
@@ -205,16 +286,18 @@ export default function ArchiveGraphicsPage() {
         );
       }
 
+      const teamTextX = flag ? 330 : 290;
+
       ctx.textAlign = "left";
       ctx.fillStyle = "#ffffff";
       ctx.font = "900 28px Arial";
-      ctx.fillText(row.squadName.slice(0, 22), 290, y + 47);
+      ctx.fillText(row.squadName.slice(0, 22), teamTextX, y + 47);
 
       ctx.font = "700 18px Arial";
       ctx.fillStyle = "#bdbdbd";
       ctx.fillText(
         `${row.chickenDinners} dinners · ${row.totalKills} kills`,
-        290,
+        teamTextX,
         y + 76,
       );
 
@@ -309,13 +392,48 @@ export default function ArchiveGraphicsPage() {
                   key={row.squadId}
                   className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate font-black">
-                      #{row.rank} {row.squadName}
-                    </p>
-                    <p className="text-xs text-neutral-400">
-                      {row.chickenDinners} dinners · {row.totalKills} kills
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="w-8 shrink-0 font-black">
+                      #{row.rank}
+                    </span>
+
+                    {(() => {
+                      const countryCode =
+                        row.countryCode ||
+                        squadCountries[row.squadId]?.countryCode ||
+                        squadCountries[
+                          `name:${normalizeSquadName(row.squadName)}`
+                        ]?.countryCode ||
+                        "";
+
+                      return countryCode ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/country-flag/${encodeURIComponent(
+                            countryCode.toLowerCase(),
+                          )}`}
+                          alt=""
+                          title={
+                            row.countryName ||
+                            squadCountries[row.squadId]?.countryName ||
+                            squadCountries[
+                              `name:${normalizeSquadName(row.squadName)}`
+                            ]?.countryName ||
+                            countryCode
+                          }
+                          className="h-5 w-8 shrink-0 object-contain"
+                        />
+                      ) : null;
+                    })()}
+
+                    <div className="min-w-0">
+                      <p className="truncate font-black">
+                        {row.squadName}
+                      </p>
+                      <p className="text-xs text-neutral-400">
+                        {row.chickenDinners} dinners · {row.totalKills} kills
+                      </p>
+                    </div>
                   </div>
 
                   <span className="text-xl font-black">
@@ -346,6 +464,10 @@ export default function ArchiveGraphicsPage() {
   );
 }
 
+function normalizeSquadName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function loadCanvasImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -354,26 +476,6 @@ function loadCanvasImage(src: string) {
     image.onerror = () => reject(new Error("Unable to load logo"));
     image.src = src;
   });
-}
-
-function drawImageCover(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
-  const scale = Math.max(
-    width / image.naturalWidth,
-    height / image.naturalHeight,
-  );
-  const drawWidth = image.naturalWidth * scale;
-  const drawHeight = image.naturalHeight * scale;
-  const drawX = x + (width - drawWidth) / 2;
-  const drawY = y + (height - drawHeight) / 2;
-
-  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 }
 
 function drawImageContained(
@@ -424,4 +526,40 @@ function roundedRect(
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+
+function drawPolynesianPattern(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 4;
+
+  const cell = 120;
+
+  for (let y = 340; y < height - 70; y += cell) {
+    for (let x = -cell; x < width + cell; x += cell) {
+      const cx = x + ((Math.floor(y / cell) % 2) * cell) / 2;
+
+      ctx.beginPath();
+      ctx.moveTo(cx, y + 48);
+      ctx.lineTo(cx + 30, y + 18);
+      ctx.lineTo(cx + 60, y + 48);
+      ctx.lineTo(cx + 90, y + 18);
+      ctx.lineTo(cx + 120, y + 48);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(cx + 30, y + 76);
+      ctx.lineTo(cx + 60, y + 56);
+      ctx.lineTo(cx + 90, y + 76);
+      ctx.lineTo(cx + 60, y + 96);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
 }
