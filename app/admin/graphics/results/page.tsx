@@ -4,7 +4,6 @@ import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/firebase";
-import { flagUrl } from "@/lib/countries";
 import {
   defaultTournamentSettings,
   loadTournamentStats,
@@ -55,12 +54,18 @@ export default function ResultsGraphicsPage() {
             logos[squadDocument.id] = logoUrl;
           }
 
-          countries[squadDocument.id] = {
+          const country = {
             countryCode:
               typeof data.countryCode === "string" ? data.countryCode : "",
             countryName:
               typeof data.countryName === "string" ? data.countryName : "",
           };
+
+          countries[squadDocument.id] = country;
+
+          if (typeof data.squadName === "string" && data.squadName.trim()) {
+            countries[`name:${normalizeSquadName(data.squadName)}`] = country;
+          }
         });
 
         setSquadLogos(logos);
@@ -179,12 +184,17 @@ export default function ResultsGraphicsPage() {
 
     const loadedFlags = await Promise.all(
       topTen.map(async (row) => {
-        const countryCode = squadCountries[row.squadId]?.countryCode;
+        const country =
+          squadCountries[row.squadId] ||
+          squadCountries[`name:${normalizeSquadName(row.squadName)}`];
+        const countryCode = country?.countryCode;
 
         if (!countryCode) return null;
 
         try {
-          return await loadCanvasImage(flagUrl(countryCode, 80));
+          return await loadCanvasImage(
+            `/api/country-flag/${encodeURIComponent(countryCode.toLowerCase())}`,
+          );
         } catch (error) {
           console.warn(`Unable to load flag for ${row.squadName}:`, error);
           return null;
@@ -350,18 +360,29 @@ export default function ResultsGraphicsPage() {
                     </div>
 
                     <div className="flex min-w-0 items-center gap-2">
-                      {squadCountries[row.squadId]?.countryCode && (
+                      {(
+                        squadCountries[row.squadId] ||
+                        squadCountries[`name:${normalizeSquadName(row.squadName)}`]
+                      )?.countryCode && (
                         <img
-                          src={flagUrl(
-                            squadCountries[row.squadId].countryCode,
-                            40,
-                          )}
+                          src={`/api/country-flag/${encodeURIComponent(
+                            (
+                              squadCountries[row.squadId] ||
+                              squadCountries[`name:${normalizeSquadName(row.squadName)}`]
+                            ).countryCode.toLowerCase(),
+                          )}`}
                           alt=""
                           title={
-                            squadCountries[row.squadId]?.countryName ||
-                            squadCountries[row.squadId]?.countryCode
+                            (
+                              squadCountries[row.squadId] ||
+                              squadCountries[`name:${normalizeSquadName(row.squadName)}`]
+                            ).countryName ||
+                            (
+                              squadCountries[row.squadId] ||
+                              squadCountries[`name:${normalizeSquadName(row.squadName)}`]
+                            ).countryCode
                           }
-                          className="h-4 w-6 shrink-0 rounded-sm object-cover"
+                          className="h-4 w-6 shrink-0 object-contain"
                         />
                       )}
 
@@ -409,6 +430,10 @@ export default function ResultsGraphicsPage() {
   );
 }
 
+
+function normalizeSquadName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 function loadCanvasImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
