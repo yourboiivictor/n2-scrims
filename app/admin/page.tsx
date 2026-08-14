@@ -61,6 +61,7 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [rejectingAll, setRejectingAll] = useState(false);
+  const [removingAll, setRemovingAll] = useState(false);
   const [selectedLogo, setSelectedLogo] = useState<{
     url: string;
     squadName: string;
@@ -298,6 +299,40 @@ export default function AdminPage() {
       await loadSquads();
     } finally {
       setRejectingAll(false);
+    }
+  }
+
+  async function removeAllSquads() {
+    if (removingAll || squads.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Permanently remove all ${squads.length} registered squads? This cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    const confirmedAgain = window.confirm(
+      "FINAL WARNING: This will permanently delete every registration. Continue?",
+    );
+
+    if (!confirmedAgain) return;
+
+    setRemovingAll(true);
+    setMessage("");
+
+    try {
+      await Promise.all(
+        squads.map((squad) => deleteDoc(doc(db, "squads", squad.id))),
+      );
+
+      setSquads([]);
+      setMessage("All registrations were permanently removed.");
+    } catch (error) {
+      console.error(error);
+      setMessage("Unable to remove all registrations. Refresh and try again.");
+      await loadSquads();
+    } finally {
+      setRemovingAll(false);
     }
   }
 
@@ -754,6 +789,15 @@ export default function AdminPage() {
                   {rejectingAll ? "Rejecting All..." : "Reject All"}
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => void removeAllSquads()}
+                  disabled={removingAll || rejectingAll || loadingSquads || squads.length === 0}
+                  className="rounded-xl border border-red-500 bg-red-950 px-5 py-3 text-sm font-black uppercase text-red-200 hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {removingAll ? "Removing All..." : "Remove All"}
+                </button>
+
               </div>
             </div>
           </header>
@@ -1011,7 +1055,7 @@ export default function AdminPage() {
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              disabled={isWorking || rejectingAll}
+                              disabled={isWorking || rejectingAll || removingAll}
                               onClick={() => openEditSquad(squad)}
                               className="rounded-lg border border-blue-600 bg-blue-950 px-3 py-2 text-xs font-black uppercase text-blue-300 disabled:opacity-40"
                             >
@@ -1019,7 +1063,7 @@ export default function AdminPage() {
                             </button>
                             <button
                               type="button"
-                              disabled={isWorking || rejectingAll}
+                              disabled={isWorking || rejectingAll || removingAll}
                               onClick={() =>
                                 void updateStatus(
                                   squad.id,
@@ -1032,7 +1076,7 @@ export default function AdminPage() {
                             </button>
                             <button
                               type="button"
-                              disabled={isWorking || rejectingAll}
+                              disabled={isWorking || rejectingAll || removingAll}
                               onClick={() =>
                                 void updateStatus(
                                   squad.id,
@@ -1045,7 +1089,7 @@ export default function AdminPage() {
                             </button>
                             <button
                               type="button"
-                              disabled={isWorking || rejectingAll}
+                              disabled={isWorking || rejectingAll || removingAll}
                               onClick={() =>
                                 void updateStatus(
                                   squad.id,
@@ -1059,7 +1103,7 @@ export default function AdminPage() {
                             {squad.status === "rejected" && (
                               <button
                                 type="button"
-                                disabled={isWorking || rejectingAll}
+                                disabled={isWorking || rejectingAll || removingAll}
                                 onClick={() =>
                                   void removeRejectedSquad(squad)
                                 }
