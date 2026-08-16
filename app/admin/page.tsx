@@ -849,6 +849,12 @@ export default function AdminPage() {
                 description="Generate tournament result graphics"
                 icon="🖼️"
               />
+              <AdminButton
+                href="/admin/tdm"
+                title="TDM"
+                description="Manage the TDM bracket, final results, and live overlay"
+                icon="⚔️"
+              />
               {isOwner && (
                 <AdminButton
                   href="/admin/staff"
