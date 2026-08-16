@@ -6,6 +6,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -41,7 +42,7 @@ type MatchStatus = "upcoming" | "live" | "finished";
 
 type TdmMatch = {
   matchNumber: number;
-  round: "Play-In Round" | "Round of 16";
+  round: "TDM";
   player1: string;
   player2: string;
   status: MatchStatus;
@@ -60,20 +61,55 @@ type PlayerStats = {
   diff: number;
 };
 
-const SEED_MATCHES: TdmMatch[] = [
-  { matchNumber: 1, round: "Play-In Round", player1: "N² | ZOOM", player2: "N² | BAPA", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 2, round: "Play-In Round", player1: "N² | JOKKIE", player2: "N² | MAUI", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 3, round: "Play-In Round", player1: "N² | SOLMI", player2: "N² | 3RDFONA", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 4, round: "Play-In Round", player1: "N² | PIRATE", player2: "N² | Jahbless", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 5, round: "Round of 16", player1: "Winner Match 1", player2: "N² | PATTY", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 6, round: "Round of 16", player1: "N² | JOHNNIE", player2: "N² | SABLEFAN", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 7, round: "Round of 16", player1: "N² | GODDESS", player2: "N² | LIGHT", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 8, round: "Round of 16", player1: "N² | MAX", player2: "N² | KTEN", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 9, round: "Round of 16", player1: "N² | WIIBAE", player2: "N² | MANGO", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 10, round: "Round of 16", player1: "N² | DORITOZ", player2: "N² | AJ", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 11, round: "Round of 16", player1: "N² | Pânda", player2: "Winner Match 2", status: "upcoming", score1: null, score2: null, winner: "" },
-  { matchNumber: 12, round: "Round of 16", player1: "Winner Match 3", player2: "Winner Match 4", status: "upcoming", score1: null, score2: null, winner: "" },
-];
+function normalizeName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function buildAutomaticMatches(players: TdmPlayer[], existing: TdmMatch[]) {
+  const finishedOrLive = existing.filter(
+    (match) => match.status === "finished" || match.status === "live",
+  );
+
+  const lockedNames = new Set(
+    finishedOrLive.flatMap((match) => [
+      normalizeName(match.player1),
+      normalizeName(match.player2),
+    ]),
+  );
+
+  const availablePlayers = players.filter(
+    (player) => !lockedNames.has(normalizeName(player.name)),
+  );
+
+  const upcomingExisting = existing
+    .filter((match) => match.status === "upcoming")
+    .sort((a, b) => a.matchNumber - b.matchNumber);
+
+  const nextMatches: TdmMatch[] = [...finishedOrLive];
+
+  let nextMatchNumber =
+    Math.max(0, ...finishedOrLive.map((match) => match.matchNumber)) + 1;
+
+  for (let index = 0; index + 1 < availablePlayers.length; index += 2) {
+    const previous = upcomingExisting[Math.floor(index / 2)];
+
+    nextMatches.push({
+      matchNumber: previous?.matchNumber || nextMatchNumber,
+      round: "TDM",
+      player1: availablePlayers[index].name,
+      player2: availablePlayers[index + 1].name,
+      status: "upcoming",
+      score1: null,
+      score2: null,
+      winner: "",
+      forfeitedBy: "",
+    });
+
+    if (!previous) nextMatchNumber += 1;
+  }
+
+  return nextMatches.sort((a, b) => a.matchNumber - b.matchNumber);
+}
 
 function matchDocId(matchNumber: number) {
   return `match-${String(matchNumber).padStart(2, "0")}`;
@@ -167,14 +203,6 @@ export default function TdmAdminPage() {
   const isOwner = user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
   const isAdmin = isOwner || hasAdminAccess;
 
-  const playInMatches = useMemo(
-    () => matches.filter((match) => match.round === "Play-In Round"),
-    [matches],
-  );
-  const roundOf16Matches = useMemo(
-    () => matches.filter((match) => match.round === "Round of 16"),
-    [matches],
-  );
   const liveMatch = useMemo(
     () => matches.find((match) => match.matchNumber === activeMatch) || null,
     [matches, activeMatch],
@@ -238,7 +266,7 @@ export default function TdmAdminPage() {
       query(collection(db, "tdmMatches"), orderBy("matchNumber", "asc")),
       (snapshot) => {
         if (snapshot.empty) {
-          setMatches(SEED_MATCHES);
+          setMatches([]);
           return;
         }
 
@@ -247,8 +275,7 @@ export default function TdmAdminPage() {
             const data = matchDocument.data();
             return {
               matchNumber: Number(data.matchNumber) || 0,
-              round:
-                data.round === "Play-In Round" ? "Play-In Round" : "Round of 16",
+              round: "TDM",
               player1: typeof data.player1 === "string" ? data.player1 : "TBD",
               player2: typeof data.player2 === "string" ? data.player2 : "TBD",
               status:
@@ -264,38 +291,13 @@ export default function TdmAdminPage() {
       },
       (error) => {
         console.error("Unable to load TDM matches:", error);
-        setMatches(SEED_MATCHES);
+        setMatches([]);
         setMessage(
-          "The bracket is displayed, but Firestore is blocking TDM access. Check the TDM Firestore rules.",
+          "Unable to load TDM matches. Check the TDM Firestore rules.",
         );
       },
     );
   }, [isAdmin]);
-
-  async function initializeTournamentData() {
-    const batch = writeBatch(db);
-
-    SEED_MATCHES.forEach((match) => {
-      batch.set(
-        doc(db, "tdmMatches", matchDocId(match.matchNumber)),
-        match,
-        { merge: true },
-      );
-    });
-
-    batch.set(
-      doc(db, "tdmOverlay", "state"),
-      {
-        activeMatch: null,
-        finalMatch: null,
-        completedMatches: [],
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    await batch.commit();
-  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -330,21 +332,76 @@ export default function TdmAdminPage() {
     );
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (activeMatch !== null) return;
+
+    const desired = buildAutomaticMatches(players, matches);
+
+    const currentSignature = JSON.stringify(
+      matches.map((match) => ({
+        n: match.matchNumber,
+        p1: match.player1,
+        p2: match.player2,
+        s: match.status,
+        w: match.winner,
+        f: match.forfeitedBy || "",
+      })),
+    );
+
+    const desiredSignature = JSON.stringify(
+      desired.map((match) => ({
+        n: match.matchNumber,
+        p1: match.player1,
+        p2: match.player2,
+        s: match.status,
+        w: match.winner,
+        f: match.forfeitedBy || "",
+      })),
+    );
+
+    if (currentSignature === desiredSignature) return;
+
+    async function syncAutomaticMatches() {
+      try {
+        const snapshot = await getDocs(collection(db, "tdmMatches"));
+        const batch = writeBatch(db);
+
+        snapshot.docs.forEach((matchDocument) => {
+          const data = matchDocument.data();
+          if (data.status === "upcoming") {
+            batch.delete(matchDocument.ref);
+          }
+        });
+
+        desired
+          .filter((match) => match.status === "upcoming")
+          .forEach((match) => {
+            batch.set(
+              doc(db, "tdmMatches", matchDocId(match.matchNumber)),
+              match,
+              { merge: true },
+            );
+          });
+
+        await batch.commit();
+      } catch (error) {
+        console.error("Unable to sync automatic TDM matches:", error);
+      }
+    }
+
+    void syncAutomaticMatches();
+  }, [isAdmin, players, matches, activeMatch]);
+
   async function startNextMatch() {
     if (!nextMatch || activeMatch !== null) return;
 
-    if (isPlaceholder(nextMatch.player1) || isPlaceholder(nextMatch.player2)) {
-      setMessage("The previous Play-In result must be finalized before this match can start.");
-      return;
-    }
 
     setMessage("");
     setScore1("");
     setScore2("");
 
     try {
-      await initializeTournamentData();
-
       const batch = writeBatch(db);
       batch.set(
         doc(db, "tdmMatches", matchDocId(nextMatch.matchNumber)),
@@ -408,18 +465,6 @@ export default function TdmAdminPage() {
         { merge: true },
       );
 
-      if (liveMatch.matchNumber === 1) {
-        batch.set(doc(db, "tdmMatches", matchDocId(5)), { player1: winner }, { merge: true });
-      }
-      if (liveMatch.matchNumber === 2) {
-        batch.set(doc(db, "tdmMatches", matchDocId(11)), { player2: winner }, { merge: true });
-      }
-      if (liveMatch.matchNumber === 3) {
-        batch.set(doc(db, "tdmMatches", matchDocId(12)), { player1: winner }, { merge: true });
-      }
-      if (liveMatch.matchNumber === 4) {
-        batch.set(doc(db, "tdmMatches", matchDocId(12)), { player2: winner }, { merge: true });
-      }
 
       batch.set(
         doc(db, "tdmOverlay", "state"),
@@ -448,17 +493,20 @@ export default function TdmAdminPage() {
 
   async function resetTournament() {
     if (resetting) return;
-    if (!window.confirm("Reset all TDM match results and bracket progress?")) return;
-    if (!window.confirm("FINAL WARNING: This clears every saved TDM score and winner. Continue?")) return;
+    if (!window.confirm("Reset all TDM match results and automatic match progress?")) return;
+    if (!window.confirm("FINAL WARNING: This clears every saved TDM score and winner. The match queue will rebuild from the current player list. Continue?")) return;
 
     setResetting(true);
     setMessage("");
 
     try {
+      const snapshot = await getDocs(collection(db, "tdmMatches"));
       const batch = writeBatch(db);
-      SEED_MATCHES.forEach((match) => {
-        batch.set(doc(db, "tdmMatches", matchDocId(match.matchNumber)), match);
+
+      snapshot.docs.forEach((matchDocument) => {
+        batch.delete(matchDocument.ref);
       });
+
       batch.set(
         doc(db, "tdmOverlay", "state"),
         {
@@ -469,8 +517,9 @@ export default function TdmAdminPage() {
         },
         { merge: true },
       );
+
       await batch.commit();
-      setMessage("TDM bracket and results were reset.");
+      setMessage("TDM match history was reset. Upcoming matches will rebuild automatically from the current player list.");
     } catch (error) {
       console.error("Unable to reset TDM:", error);
       setMessage("Unable to reset the TDM tournament.");
@@ -650,7 +699,7 @@ export default function TdmAdminPage() {
               </Link>
               <p className="mt-4 text-xs font-black uppercase tracking-[0.3em] text-white/45">N² Scrims</p>
               <h1 className="mt-2 text-4xl font-black uppercase">TDM Tournament</h1>
-              <p className="mt-2 text-sm text-white/55">Bracket control, final match results, and overall TDM records.</p>
+              <p className="mt-2 text-sm text-white/55">Automatic match control, final results, player management, and overall TDM records.</p>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -754,17 +803,26 @@ export default function TdmAdminPage() {
                 Start Match {nextMatch.matchNumber}
               </button>
             </div>
+          ) : players.length < 2 ? (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black p-6 text-center">
+              <h2 className="text-2xl font-black uppercase">Add Players</h2>
+              <p className="mt-2 text-sm text-white/45">
+                Add at least 2 players. Matches are created automatically in roster order.
+              </p>
+            </div>
           ) : matches.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-white/10 bg-black p-6 text-center">
-              <h2 className="text-2xl font-black uppercase">Bracket Not Loaded</h2>
+              <h2 className="text-2xl font-black uppercase">Building Match Queue</h2>
               <p className="mt-2 text-sm text-white/45">
-                The TDM bracket could not be loaded.
+                The next matchup is being created automatically.
               </p>
             </div>
           ) : (
             <div className="mt-4 rounded-2xl border border-white/10 bg-black p-6 text-center">
-              <h2 className="text-2xl font-black uppercase">All Listed Matches Completed</h2>
-              <p className="mt-2 text-sm text-white/45">Use Reset Tournament when you are ready to start this bracket again.</p>
+              <h2 className="text-2xl font-black uppercase">No Match Waiting</h2>
+              <p className="mt-2 text-sm text-white/45">
+                Add more players and the next matchup will be created automatically.
+              </p>
             </div>
           )}
         </section>
@@ -834,8 +892,59 @@ export default function TdmAdminPage() {
           </aside>
 
           <section className="space-y-5">
-            <BracketSection title="Play-In Round" matches={playInMatches} />
-            <BracketSection title="Round of 16" matches={roundOf16Matches} />
+            <section className="rounded-3xl border border-white/10 bg-neutral-950 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-white/45">
+                Automatic Match Queue
+              </p>
+              <h2 className="mt-1 text-2xl font-black uppercase">
+                Matches
+              </h2>
+              <p className="mt-2 text-sm text-white/45">
+                Players are paired automatically in roster order. Add or edit player names and upcoming matches update automatically. Finished match history stays saved.
+              </p>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {matches.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/15 p-6 text-center text-sm text-white/45 md:col-span-2">
+                    Add at least 2 players to create the first matchup.
+                  </div>
+                ) : (
+                  matches.map((match) => (
+                    <article
+                      key={match.matchNumber}
+                      className="overflow-hidden rounded-2xl border border-white/10 bg-black"
+                    >
+                      <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-wider text-white/55">
+                        <span>Match {match.matchNumber}</span>
+                        <span>{match.status}</span>
+                      </div>
+
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-5">
+                        <p className={`text-right font-black ${match.winner === match.player1 ? "text-white" : match.status === "finished" ? "text-white/40" : ""}`}>
+                          {match.player1}
+                        </p>
+                        <span className="rounded-full border border-white/15 px-2 py-1 text-[10px] font-black text-white/45">
+                          VS
+                        </span>
+                        <p className={`font-black ${match.winner === match.player2 ? "text-white" : match.status === "finished" ? "text-white/40" : ""}`}>
+                          {match.player2}
+                        </p>
+                      </div>
+
+                      {match.status === "finished" && (
+                        <div className="border-t border-white/10 px-4 py-3 text-center text-sm font-black">
+                          {match.forfeitedBy
+                            ? `FORFEIT · ${match.forfeitedBy} · Winner: ${match.winner}`
+                            : match.score1 !== null && match.score2 !== null
+                              ? `FINAL · ${match.score1} - ${match.score2} · Winner: ${match.winner}`
+                              : `FINAL · Winner: ${match.winner}`}
+                        </div>
+                      )}
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
           </section>
         </section>
       </div>
@@ -930,41 +1039,5 @@ export default function TdmAdminPage() {
         </div>
       )}
     </main>
-  );
-}
-
-function BracketSection({
-  title,
-  matches,
-}: {
-  title: string;
-  matches: TdmMatch[];
-}) {
-  return (
-    <section className="rounded-3xl border border-white/10 bg-neutral-950 p-5">
-      <p className="text-xs font-black uppercase tracking-[0.25em] text-white/45">Bracket</p>
-      <h2 className="mt-1 text-2xl font-black uppercase">{title}</h2>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {matches.map((match) => (
-          <article key={match.matchNumber} className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-            <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-wider text-white/55">
-              <span>Match {match.matchNumber}</span>
-              <span>{match.status}</span>
-            </div>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-5">
-              <p className={`text-right font-black ${match.winner === match.player1 ? "text-white" : match.status === "finished" ? "text-white/40" : ""}`}>{match.player1}</p>
-              <span className="rounded-full border border-white/15 px-2 py-1 text-[10px] font-black text-white/45">VS</span>
-              <p className={`font-black ${match.winner === match.player2 ? "text-white" : match.status === "finished" ? "text-white/40" : ""}`}>{match.player2}</p>
-            </div>
-            {match.status === "finished" && match.score1 !== null && match.score2 !== null && (
-              <div className="border-t border-white/10 px-4 py-3 text-center text-sm font-black">
-                FINAL · {match.score1} - {match.score2} · Winner: {match.winner}
-              </div>
-            )}
-          </article>
-        ))}
-      </div>
-    </section>
   );
 }
