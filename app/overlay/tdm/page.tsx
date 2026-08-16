@@ -291,7 +291,7 @@ export default function TdmOverlayPage() {
 
         .tdm-safe {
           position: absolute;
-          inset: 4.5vh 4.5vw;
+          inset: 2.5vh 2.5vw;
         }
 
         .tdm-panel {
@@ -318,12 +318,12 @@ export default function TdmOverlayPage() {
             : "scale-[1.08] opacity-0"
         }`}
       >
-        <div className="mx-auto flex h-full max-w-[1680px] flex-col justify-center gap-5">
-          <header className="tdm-panel rounded-[28px] px-8 py-5 text-center">
+        <div className="mx-auto flex h-full max-w-[1840px] flex-col justify-center gap-3">
+          <header className="tdm-panel rounded-[24px] px-6 py-3 text-center">
             <p className="text-[13px] font-black uppercase tracking-[0.42em] text-white/55">
               N² Scrims
             </p>
-            <h1 className="mt-1 text-[42px] font-black uppercase italic leading-none">
+            <h1 className="mt-1 text-[32px] font-black uppercase italic leading-none">
               TDM Tournament
             </h1>
             <p className="mt-2 text-[11px] font-black uppercase tracking-[0.32em] text-white/45">
@@ -332,7 +332,7 @@ export default function TdmOverlayPage() {
           </header>
 
           <div
-            className="grid min-h-0 flex-1 gap-4"
+            className="grid min-h-0 flex-1 gap-3"
             style={{
               gridTemplateColumns: `repeat(${Math.max(1, Math.min(roundGroups.length, 4))}, minmax(0, 1fr))`,
             }}
@@ -504,9 +504,9 @@ function BracketGroup({
   matches: TdmMatch[];
 }) {
   return (
-    <section className="tdm-panel min-h-0 rounded-[28px] p-5">
-      <div className="mb-4 flex items-center justify-between border-b border-white/35 pb-3">
-        <h2 className="text-[26px] font-black uppercase italic">
+    <section className="tdm-panel min-h-0 rounded-[22px] p-3">
+      <div className="mb-2 flex items-center justify-between border-b border-white/35 pb-2">
+        <h2 className="text-[20px] font-black uppercase italic">
           {title}
         </h2>
         <span className="text-[10px] font-black uppercase tracking-[0.28em] text-white/45">
@@ -514,22 +514,22 @@ function BracketGroup({
         </span>
       </div>
 
-      <div className="grid gap-3">
+      <div className="grid gap-2">
         {matches.map((match) => (
           <div
             key={match.matchNumber}
-            className={`tdm-card rounded-2xl p-4 ${
+            className={`tdm-card rounded-xl p-2.5 ${
               match.status === "finished"
                 ? "opacity-55"
                 : "opacity-100"
             }`}
           >
-            <div className="mb-3 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.16em] text-white/50">
+            <div className="mb-1.5 flex items-center justify-between text-[9px] font-black uppercase tracking-[0.16em] text-white/50">
               <span>Match {match.matchNumber}</span>
               <span>{match.status}</span>
             </div>
 
-            <div className="grid grid-cols-[1fr_42px_1fr] items-center gap-2 text-center text-[14px] font-black">
+            <div className="grid grid-cols-[1fr_42px_1fr] items-center gap-1.5 text-center text-[12px] font-black">
               <span
                 className={
                   match.winner === match.player1
@@ -554,7 +554,7 @@ function BracketGroup({
             </div>
 
             {match.status === "finished" && (
-              <div className="mt-3 border-t border-white/15 pt-2 text-center text-[12px] font-black">
+              <div className="mt-1.5 border-t border-white/15 pt-1.5 text-center text-[10px] font-black">
                 {match.forfeitedBy
                   ? `FORFEIT · ${match.forfeitedBy}`
                   : match.score1 !== null && match.score2 !== null

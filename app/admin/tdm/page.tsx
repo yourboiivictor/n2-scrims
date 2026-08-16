@@ -400,9 +400,13 @@ export default function TdmAdminPage() {
     if (activeMatch !== null) return;
     if (players.length < 2) return;
 
+    let cancelled = false;
+
     async function syncEliminationRounds() {
       try {
         const snapshot = await getDocs(collection(db, "tdmMatches"));
+        if (cancelled) return;
+
         const loadedMatches: TdmMatch[] = snapshot.docs.map((matchDocument) => {
           const data = matchDocument.data();
           return {
@@ -412,9 +416,7 @@ export default function TdmAdminPage() {
                 ? data.round
                 : "Round 1",
             roundIndex:
-              typeof data.roundIndex === "number"
-                ? data.roundIndex
-                : 1,
+              typeof data.roundIndex === "number" ? data.roundIndex : 1,
             player1: typeof data.player1 === "string" ? data.player1 : "TBD",
             player2: typeof data.player2 === "string" ? data.player2 : "TBD",
             status:
@@ -430,7 +432,11 @@ export default function TdmAdminPage() {
         });
 
         if (loadedMatches.length === 0) {
-          const firstRound = createRoundMatches(players.map((player) => player.name), 1, 1);
+          const firstRound = createRoundMatches(
+            players.map((player) => player.name),
+            1,
+            1,
+          );
           if (firstRound.length === 0) return;
 
           const batch = writeBatch(db);
@@ -446,9 +452,14 @@ export default function TdmAdminPage() {
         );
         const currentRound = roundMatches(loadedMatches, highestRound);
 
-        if (currentRound.some((match) => match.status !== "finished")) return;
+        // Never advance until every actually-played match in this round is final.
+        if (currentRound.length === 0) return;
+        if (currentRound.some((match) => match.status !== "finished" || !match.winner)) return;
 
+        // Winners plus anyone who did not have an opponent in this round (the bye) advance.
         const advancers = getRoundAdvancers(players, loadedMatches, highestRound);
+
+        // One player left means the tournament is complete.
         if (advancers.length <= 1) return;
 
         const nextRoundIndex = highestRound + 1;
@@ -468,13 +479,32 @@ export default function TdmAdminPage() {
         nextRoundMatches.forEach((match) => {
           batch.set(doc(db, "tdmMatches", matchDocId(match.matchNumber)), match);
         });
+        batch.set(
+          doc(db, "tdmOverlay", "state"),
+          {
+            activeMatch: null,
+            finalMatch: null,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
         await batch.commit();
       } catch (error) {
         console.error("Unable to advance TDM elimination rounds:", error);
+        if (!cancelled) {
+          setMessage(
+            `Unable to build the next TDM round: ${
+              error instanceof Error ? error.message : "Unknown Firestore error"
+            }`,
+          );
+        }
       }
     }
 
     void syncEliminationRounds();
+    return () => {
+      cancelled = true;
+    };
   }, [isAdmin, players, matches, activeMatch]);
 
   async function startNextMatch() {
