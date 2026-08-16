@@ -49,6 +49,7 @@ type TdmMatch = {
   score1: number | null;
   score2: number | null;
   winner: string;
+  forfeitedBy?: string;
 };
 
 type PlayerStats = {
@@ -285,6 +286,10 @@ export default function TdmAdminPage() {
               score1: typeof data.score1 === "number" ? data.score1 : null,
               score2: typeof data.score2 === "number" ? data.score2 : null,
               winner: typeof data.winner === "string" ? data.winner : "",
+              forfeitedBy:
+                typeof data.forfeitedBy === "string"
+                  ? data.forfeitedBy
+                  : "",
             } satisfies TdmMatch;
           }),
         );
