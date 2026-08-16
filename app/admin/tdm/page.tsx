@@ -42,7 +42,8 @@ type MatchStatus = "upcoming" | "live" | "finished";
 
 type TdmMatch = {
   matchNumber: number;
-  round: "TDM";
+  round: string;
+  roundIndex: number;
   player1: string;
   player2: string;
   status: MatchStatus;
@@ -66,58 +67,95 @@ function normalizeName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function buildAutomaticMatches(players: TdmPlayer[], existing: TdmMatch[]) {
-  const finishedOrLive = existing.filter(
-    (match) => match.status === "finished" || match.status === "live",
-  );
+function getRoundLabel(entrantCount: number, roundIndex: number) {
+  if (entrantCount <= 2) return "Final";
+  if (entrantCount <= 4) return "Semifinals";
+  if (entrantCount <= 8) return "Round of 8";
+  if (entrantCount <= 16 && roundIndex > 1) return "Round of 16";
+  return `Round ${roundIndex}`;
+}
 
-  const lockedNames = new Set(
-    finishedOrLive.flatMap((match) => [
+function roundMatches(matches: TdmMatch[], roundIndex: number) {
+  return matches
+    .filter((match) => match.roundIndex === roundIndex)
+    .sort((a, b) => a.matchNumber - b.matchNumber);
+}
+
+function getRoundEntrants(
+  players: TdmPlayer[],
+  matches: TdmMatch[],
+  roundIndex: number,
+): string[] {
+  if (roundIndex <= 1) {
+    return players.map((player) => player.name);
+  }
+
+  return getRoundAdvancers(players, matches, roundIndex - 1);
+}
+
+function getRoundAdvancers(
+  players: TdmPlayer[],
+  matches: TdmMatch[],
+  roundIndex: number,
+): string[] {
+  const entrants = getRoundEntrants(players, matches, roundIndex);
+  const current = roundMatches(matches, roundIndex);
+  const participantNames = new Set(
+    current.flatMap((match) => [
       normalizeName(match.player1),
       normalizeName(match.player2),
     ]),
   );
 
-  const availablePlayers = players.filter(
-    (player) => !lockedNames.has(normalizeName(player.name)),
+  const byes = entrants.filter(
+    (name) => !participantNames.has(normalizeName(name)),
   );
 
-  const upcomingExisting = existing
-    .filter((match) => match.status === "upcoming")
-    .sort((a, b) => a.matchNumber - b.matchNumber);
+  const winners = current
+    .filter((match) => match.status === "finished" && match.winner)
+    .map((match) => match.winner);
 
-  const nextMatches: TdmMatch[] = [...finishedOrLive];
+  const combined = [...winners, ...byes];
+  const seen = new Set<string>();
 
-  let nextMatchNumber =
-    Math.max(0, ...finishedOrLive.map((match) => match.matchNumber)) + 1;
+  return combined.filter((name) => {
+    const key = normalizeName(name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
-  for (let index = 0; index + 1 < availablePlayers.length; index += 2) {
-    const previous = upcomingExisting[Math.floor(index / 2)];
+function createRoundMatches(
+  entrants: string[],
+  roundIndex: number,
+  firstMatchNumber: number,
+): TdmMatch[] {
+  const created: TdmMatch[] = [];
+  const label = getRoundLabel(entrants.length, roundIndex);
+  let matchNumber = firstMatchNumber;
 
-    nextMatches.push({
-      matchNumber: previous?.matchNumber || nextMatchNumber,
-      round: "TDM",
-      player1: availablePlayers[index].name,
-      player2: availablePlayers[index + 1].name,
+  for (let index = 0; index + 1 < entrants.length; index += 2) {
+    created.push({
+      matchNumber,
+      round: label,
+      roundIndex,
+      player1: entrants[index],
+      player2: entrants[index + 1],
       status: "upcoming",
       score1: null,
       score2: null,
       winner: "",
       forfeitedBy: "",
     });
-
-    if (!previous) nextMatchNumber += 1;
+    matchNumber += 1;
   }
 
-  return nextMatches.sort((a, b) => a.matchNumber - b.matchNumber);
+  return created;
 }
 
 function matchDocId(matchNumber: number) {
   return `match-${String(matchNumber).padStart(2, "0")}`;
-}
-
-function isPlaceholder(name: string) {
-  return name.toLowerCase().startsWith("winner match");
 }
 
 function buildOverallStats(matches: TdmMatch[]) {
@@ -139,12 +177,7 @@ function buildOverallStats(matches: TdmMatch[]) {
   }
 
   matches
-    .filter(
-      (match) =>
-        match.status === "finished" &&
-        match.score1 !== null &&
-        match.score2 !== null,
-    )
+    .filter((match) => match.status === "finished")
     .forEach((match) => {
       const p1 = getPlayer(match.player1);
       const p2 = getPlayer(match.player2);
@@ -153,10 +186,13 @@ function buildOverallStats(matches: TdmMatch[]) {
 
       p1.played += 1;
       p2.played += 1;
-      p1.pointsFor += score1;
-      p1.pointsAgainst += score2;
-      p2.pointsFor += score2;
-      p2.pointsAgainst += score1;
+
+      if (match.score1 !== null && match.score2 !== null) {
+        p1.pointsFor += score1;
+        p1.pointsAgainst += score2;
+        p2.pointsFor += score2;
+        p2.pointsAgainst += score1;
+      }
 
       if (match.winner === match.player1) {
         p1.wins += 1;
@@ -209,10 +245,25 @@ export default function TdmAdminPage() {
     [matches, activeMatch],
   );
   const nextMatch = useMemo(
-    () => matches.find((match) => match.status !== "finished") || null,
+    () =>
+      [...matches]
+        .filter((match) => match.status === "upcoming")
+        .sort((a, b) => {
+          if (a.roundIndex !== b.roundIndex) return a.roundIndex - b.roundIndex;
+          return a.matchNumber - b.matchNumber;
+        })[0] || null,
     [matches],
   );
   const overallStats = useMemo(() => buildOverallStats(matches), [matches]);
+  const champion = useMemo(() => {
+    if (matches.length === 0) return "";
+    const highestRound = Math.max(...matches.map((match) => match.roundIndex));
+    const latest = roundMatches(matches, highestRound);
+    if (latest.length === 1 && latest[0].status === "finished") {
+      return latest[0].winner;
+    }
+    return "";
+  }, [matches]);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (currentUser) => {
@@ -276,7 +327,14 @@ export default function TdmAdminPage() {
             const data = matchDocument.data();
             return {
               matchNumber: Number(data.matchNumber) || 0,
-              round: "TDM",
+              round:
+                typeof data.round === "string" && data.round !== "TDM"
+                  ? data.round
+                  : "Round 1",
+              roundIndex:
+                typeof data.roundIndex === "number"
+                  ? data.roundIndex
+                  : 1,
               player1: typeof data.player1 === "string" ? data.player1 : "TBD",
               player2: typeof data.player2 === "string" ? data.player2 : "TBD",
               status:
@@ -340,62 +398,83 @@ export default function TdmAdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
     if (activeMatch !== null) return;
+    if (players.length < 2) return;
 
-    const desired = buildAutomaticMatches(players, matches);
-
-    const currentSignature = JSON.stringify(
-      matches.map((match) => ({
-        n: match.matchNumber,
-        p1: match.player1,
-        p2: match.player2,
-        s: match.status,
-        w: match.winner,
-        f: match.forfeitedBy || "",
-      })),
-    );
-
-    const desiredSignature = JSON.stringify(
-      desired.map((match) => ({
-        n: match.matchNumber,
-        p1: match.player1,
-        p2: match.player2,
-        s: match.status,
-        w: match.winner,
-        f: match.forfeitedBy || "",
-      })),
-    );
-
-    if (currentSignature === desiredSignature) return;
-
-    async function syncAutomaticMatches() {
+    async function syncEliminationRounds() {
       try {
         const snapshot = await getDocs(collection(db, "tdmMatches"));
-        const batch = writeBatch(db);
-
-        snapshot.docs.forEach((matchDocument) => {
+        const loadedMatches: TdmMatch[] = snapshot.docs.map((matchDocument) => {
           const data = matchDocument.data();
-          if (data.status === "upcoming") {
-            batch.delete(matchDocument.ref);
-          }
+          return {
+            matchNumber: Number(data.matchNumber) || 0,
+            round:
+              typeof data.round === "string" && data.round !== "TDM"
+                ? data.round
+                : "Round 1",
+            roundIndex:
+              typeof data.roundIndex === "number"
+                ? data.roundIndex
+                : 1,
+            player1: typeof data.player1 === "string" ? data.player1 : "TBD",
+            player2: typeof data.player2 === "string" ? data.player2 : "TBD",
+            status:
+              data.status === "live" || data.status === "finished"
+                ? data.status
+                : "upcoming",
+            score1: typeof data.score1 === "number" ? data.score1 : null,
+            score2: typeof data.score2 === "number" ? data.score2 : null,
+            winner: typeof data.winner === "string" ? data.winner : "",
+            forfeitedBy:
+              typeof data.forfeitedBy === "string" ? data.forfeitedBy : "",
+          };
         });
 
-        desired
-          .filter((match) => match.status === "upcoming")
-          .forEach((match) => {
-            batch.set(
-              doc(db, "tdmMatches", matchDocId(match.matchNumber)),
-              match,
-              { merge: true },
-            );
-          });
+        if (loadedMatches.length === 0) {
+          const firstRound = createRoundMatches(players.map((player) => player.name), 1, 1);
+          if (firstRound.length === 0) return;
 
+          const batch = writeBatch(db);
+          firstRound.forEach((match) => {
+            batch.set(doc(db, "tdmMatches", matchDocId(match.matchNumber)), match);
+          });
+          await batch.commit();
+          return;
+        }
+
+        const highestRound = Math.max(
+          ...loadedMatches.map((match) => match.roundIndex || 1),
+        );
+        const currentRound = roundMatches(loadedMatches, highestRound);
+
+        if (currentRound.some((match) => match.status !== "finished")) return;
+
+        const advancers = getRoundAdvancers(players, loadedMatches, highestRound);
+        if (advancers.length <= 1) return;
+
+        const nextRoundIndex = highestRound + 1;
+        if (roundMatches(loadedMatches, nextRoundIndex).length > 0) return;
+
+        const firstMatchNumber =
+          Math.max(...loadedMatches.map((match) => match.matchNumber), 0) + 1;
+        const nextRoundMatches = createRoundMatches(
+          advancers,
+          nextRoundIndex,
+          firstMatchNumber,
+        );
+
+        if (nextRoundMatches.length === 0) return;
+
+        const batch = writeBatch(db);
+        nextRoundMatches.forEach((match) => {
+          batch.set(doc(db, "tdmMatches", matchDocId(match.matchNumber)), match);
+        });
         await batch.commit();
       } catch (error) {
-        console.error("Unable to sync automatic TDM matches:", error);
+        console.error("Unable to advance TDM elimination rounds:", error);
       }
     }
 
-    void syncAutomaticMatches();
+    void syncEliminationRounds();
   }, [isAdmin, players, matches, activeMatch]);
 
   async function startNextMatch() {
@@ -465,6 +544,7 @@ export default function TdmAdminPage() {
           score1: first,
           score2: second,
           winner,
+          forfeitedBy: "",
           finishedAt: serverTimestamp(),
         },
         { merge: true },
@@ -496,10 +576,64 @@ export default function TdmAdminPage() {
     }
   }
 
+  async function forfeitPlayer(playerName: string) {
+    if (!liveMatch || savingResult) return;
+
+    const winner =
+      playerName === liveMatch.player1 ? liveMatch.player2 : liveMatch.player1;
+
+    if (!window.confirm(`Forfeit ${playerName}? ${winner} will advance.`)) return;
+
+    const completed = matches
+      .filter((match) => match.status === "finished")
+      .map((match) => match.matchNumber);
+    const completedMatches = Array.from(
+      new Set([...completed, liveMatch.matchNumber]),
+    ).sort((a, b) => a - b);
+
+    setSavingResult(true);
+    setMessage("");
+
+    try {
+      const batch = writeBatch(db);
+      batch.set(
+        doc(db, "tdmMatches", matchDocId(liveMatch.matchNumber)),
+        {
+          status: "finished",
+          score1: null,
+          score2: null,
+          winner,
+          forfeitedBy: playerName,
+          finishedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      batch.set(
+        doc(db, "tdmOverlay", "state"),
+        {
+          activeMatch: null,
+          finalMatch: liveMatch.matchNumber,
+          completedMatches,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      await batch.commit();
+      setScore1("");
+      setScore2("");
+      setMessage(`${playerName} forfeited. ${winner} advances.`);
+    } catch (error) {
+      console.error("Unable to save forfeit:", error);
+      setMessage("Unable to save the forfeit.");
+    } finally {
+      setSavingResult(false);
+    }
+  }
+
   async function resetTournament() {
     if (resetting) return;
     if (!window.confirm("Reset all TDM match results and automatic match progress?")) return;
-    if (!window.confirm("FINAL WARNING: This clears every saved TDM score and winner. The match queue will rebuild from the current player list. Continue?")) return;
+    if (!window.confirm("FINAL WARNING: This clears every saved TDM score and winner. The elimination tournament will rebuild from the current player list. Continue?")) return;
 
     setResetting(true);
     setMessage("");
@@ -524,7 +658,7 @@ export default function TdmAdminPage() {
       );
 
       await batch.commit();
-      setMessage("TDM match history was reset. Upcoming matches will rebuild automatically from the current player list.");
+      setMessage("TDM tournament was reset. Round 1 will rebuild automatically from the current player list.");
     } catch (error) {
       console.error("Unable to reset TDM:", error);
       setMessage("Unable to reset the TDM tournament.");
@@ -792,6 +926,19 @@ export default function TdmAdminPage() {
                 >
                   {savingResult ? "Saving Final..." : "Confirm Final Result"}
                 </button>
+                <div className="mt-4 border-t border-white/10 pt-4">
+                  <p className="mb-3 text-center text-[10px] font-black uppercase tracking-[0.2em] text-white/40">
+                    Forfeit Player
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => void forfeitPlayer(liveMatch.player1)} disabled={savingResult} className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-3 text-xs font-black uppercase text-red-200 disabled:opacity-40">
+                      Forfeit {liveMatch.player1}
+                    </button>
+                    <button type="button" onClick={() => void forfeitPlayer(liveMatch.player2)} disabled={savingResult} className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-3 text-xs font-black uppercase text-red-200 disabled:opacity-40">
+                      Forfeit {liveMatch.player2}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : nextMatch ? (
@@ -822,11 +969,16 @@ export default function TdmAdminPage() {
                 The next matchup is being created automatically.
               </p>
             </div>
+          ) : champion ? (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black p-6 text-center">
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-white/45">TDM Champion</p>
+              <h2 className="mt-2 text-3xl font-black uppercase">{champion}</h2>
+            </div>
           ) : (
             <div className="mt-4 rounded-2xl border border-white/10 bg-black p-6 text-center">
-              <h2 className="text-2xl font-black uppercase">No Match Waiting</h2>
+              <h2 className="text-2xl font-black uppercase">Building Next Round</h2>
               <p className="mt-2 text-sm text-white/45">
-                Add more players and the next matchup will be created automatically.
+                Winners are being paired automatically for the next round.
               </p>
             </div>
           )}
@@ -905,7 +1057,7 @@ export default function TdmAdminPage() {
                 Matches
               </h2>
               <p className="mt-2 text-sm text-white/45">
-                Players are paired automatically in roster order. Add or edit player names and upcoming matches update automatically. Finished match history stays saved.
+                Round 1 uses roster order. After every round finishes, winners advance automatically until the Final. Byes are handled automatically for odd player counts.
               </p>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -920,7 +1072,7 @@ export default function TdmAdminPage() {
                       className="overflow-hidden rounded-2xl border border-white/10 bg-black"
                     >
                       <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-wider text-white/55">
-                        <span>Match {match.matchNumber}</span>
+                        <span>{match.round} · Match {match.matchNumber}</span>
                         <span>{match.status}</span>
                       </div>
 

@@ -18,13 +18,15 @@ type MatchStatus = "upcoming" | "live" | "finished";
 
 type TdmMatch = {
   matchNumber: number;
-  round: "Play-In Round" | "Round of 16";
+  round: string;
+  roundIndex: number;
   player1: string;
   player2: string;
   status: MatchStatus;
   score1: number | null;
   score2: number | null;
   winner: string;
+  forfeitedBy?: string;
 };
 
 type PlayerStats = {
@@ -57,12 +59,7 @@ function buildOverallStats(matches: TdmMatch[]) {
   }
 
   matches
-    .filter(
-      (match) =>
-        match.status === "finished" &&
-        match.score1 !== null &&
-        match.score2 !== null,
-    )
+    .filter((match) => match.status === "finished")
     .forEach((match) => {
       const p1 = getPlayer(match.player1);
       const p2 = getPlayer(match.player2);
@@ -71,10 +68,12 @@ function buildOverallStats(matches: TdmMatch[]) {
 
       p1.played += 1;
       p2.played += 1;
-      p1.pointsFor += score1;
-      p1.pointsAgainst += score2;
-      p2.pointsFor += score2;
-      p2.pointsAgainst += score1;
+      if (match.score1 !== null && match.score2 !== null) {
+        p1.pointsFor += score1;
+        p1.pointsAgainst += score2;
+        p2.pointsFor += score2;
+        p2.pointsAgainst += score1;
+      }
 
       if (match.winner === match.player1) {
         p1.wins += 1;
@@ -115,9 +114,13 @@ export default function TdmOverlayPage() {
             return {
               matchNumber: Number(data.matchNumber) || 0,
               round:
-                data.round === "Play-In Round"
-                  ? "Play-In Round"
-                  : "Round of 16",
+                typeof data.round === "string" && data.round !== "TDM"
+                  ? data.round
+                  : "Round 1",
+              roundIndex:
+                typeof data.roundIndex === "number"
+                  ? data.roundIndex
+                  : 1,
               player1:
                 typeof data.player1 === "string"
                   ? data.player1
@@ -141,6 +144,10 @@ export default function TdmOverlayPage() {
               winner:
                 typeof data.winner === "string"
                   ? data.winner
+                  : "",
+              forfeitedBy:
+                typeof data.forfeitedBy === "string"
+                  ? data.forfeitedBy
                   : "",
             } satisfies TdmMatch;
           }),
@@ -226,6 +233,31 @@ export default function TdmOverlayPage() {
 
   const overviewVisible = !liveMatch && !finalResult;
 
+  const roundGroups = useMemo(() => {
+    const grouped = new Map<number, TdmMatch[]>();
+    matches.forEach((match) => {
+      const key = match.roundIndex || 1;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(match);
+    });
+    return [...grouped.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([roundIndex, roundMatches]) => ({
+        roundIndex,
+        title: roundMatches[0]?.round || `Round ${roundIndex}`,
+        matches: roundMatches.sort((a, b) => a.matchNumber - b.matchNumber),
+      }));
+  }, [matches]);
+
+  const champion = useMemo(() => {
+    if (roundGroups.length === 0) return "";
+    const latest = roundGroups[roundGroups.length - 1];
+    if (latest.matches.length === 1 && latest.matches[0].status === "finished") {
+      return latest.matches[0].winner;
+    }
+    return "";
+  }, [roundGroups]);
+
   return (
     <main className="tdm-stage">
       <style jsx global>{`
@@ -299,21 +331,27 @@ export default function TdmOverlayPage() {
             </p>
           </header>
 
-          <div className="grid min-h-0 flex-1 grid-cols-2 gap-5">
-            <BracketGroup
-              title="Play-In Round"
-              matches={matches.filter(
-                (match) => match.round === "Play-In Round",
-              )}
-            />
-
-            <BracketGroup
-              title="Round of 16"
-              matches={matches.filter(
-                (match) => match.round === "Round of 16",
-              )}
-            />
+          <div
+            className="grid min-h-0 flex-1 gap-4"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(1, Math.min(roundGroups.length, 4))}, minmax(0, 1fr))`,
+            }}
+          >
+            {roundGroups.map((group) => (
+              <BracketGroup
+                key={group.roundIndex}
+                title={group.title}
+                matches={group.matches}
+              />
+            ))}
           </div>
+
+          {champion && (
+            <div className="tdm-panel rounded-[24px] px-8 py-4 text-center">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/45">TDM Champion</p>
+              <p className="mt-1 text-[28px] font-black uppercase">{champion}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -384,10 +422,11 @@ export default function TdmOverlayPage() {
                   finalResult.winner === finalResult.player1
                 }
                 stats={finalPlayer1Stats}
+                forfeited={finalResult.forfeitedBy === finalResult.player1}
               />
 
               <div className="text-[clamp(22px,1.6vw,30px)] font-black text-white/45">
-                FINAL
+                {finalResult.forfeitedBy ? "FORFEIT" : "FINAL"}
               </div>
 
               <FinalPlayerCard
@@ -397,6 +436,7 @@ export default function TdmOverlayPage() {
                   finalResult.winner === finalResult.player2
                 }
                 stats={finalPlayer2Stats}
+                forfeited={finalResult.forfeitedBy === finalResult.player2}
               />
             </div>
 
@@ -420,11 +460,13 @@ function FinalPlayerCard({
   score,
   winner,
   stats,
+  forfeited,
 }: {
   name: string;
   score: number | null;
   winner: boolean;
   stats: PlayerStats | null;
+  forfeited: boolean;
 }) {
   return (
     <div
@@ -437,11 +479,11 @@ function FinalPlayerCard({
       </p>
 
       <p className="mt-3 text-[clamp(58px,5vw,88px)] font-black leading-none">
-        {score ?? 0}
+        {forfeited ? "—" : score ?? 0}
       </p>
 
       <p className="mt-4 text-[11px] font-black uppercase tracking-[0.18em] text-white/50">
-        {winner ? "Winner" : "Final"}
+        {forfeited ? "Forfeit" : winner ? "Winner" : "Final"}
       </p>
 
       {stats && (
@@ -511,13 +553,15 @@ function BracketGroup({
               </span>
             </div>
 
-            {match.status === "finished" &&
-              match.score1 !== null &&
-              match.score2 !== null && (
-                <div className="mt-3 border-t border-white/15 pt-2 text-center text-[12px] font-black">
-                  FINAL {match.score1} - {match.score2}
-                </div>
-              )}
+            {match.status === "finished" && (
+              <div className="mt-3 border-t border-white/15 pt-2 text-center text-[12px] font-black">
+                {match.forfeitedBy
+                  ? `FORFEIT · ${match.forfeitedBy}`
+                  : match.score1 !== null && match.score2 !== null
+                    ? `FINAL ${match.score1} - ${match.score2}`
+                    : "FINAL"}
+              </div>
+            )}
           </div>
         ))}
 
