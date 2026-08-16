@@ -154,6 +154,9 @@ export default function TdmAdminPage() {
   const [playerName, setPlayerName] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingPlayer, setEditingPlayer] = useState<TdmPlayer | null>(null);
+  const [editingPlayerName, setEditingPlayerName] = useState("");
+  const [savingPlayerEdit, setSavingPlayerEdit] = useState(false);
   const [message, setMessage] = useState("");
   const [activeMatch, setActiveMatch] = useState<number | null>(null);
   const [score1, setScore1] = useState("");
@@ -230,28 +233,12 @@ export default function TdmAdminPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    let seeded = false;
 
     return onSnapshot(
       query(collection(db, "tdmMatches"), orderBy("matchNumber", "asc")),
       (snapshot) => {
-        if (snapshot.empty && !seeded) {
-          seeded = true;
-          const batch = writeBatch(db);
-          SEED_MATCHES.forEach((match) => {
-            batch.set(doc(db, "tdmMatches", matchDocId(match.matchNumber)), match);
-          });
-          batch.set(
-            doc(db, "tdmOverlay", "state"),
-            {
-              activeMatch: null,
-              finalMatch: null,
-              completedMatches: [],
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true },
-          );
-          void batch.commit();
+        if (snapshot.empty) {
+          setMatches(SEED_MATCHES);
           return;
         }
 
@@ -277,10 +264,38 @@ export default function TdmAdminPage() {
       },
       (error) => {
         console.error("Unable to load TDM matches:", error);
-        setMessage("Unable to load TDM matches.");
+        setMatches(SEED_MATCHES);
+        setMessage(
+          "The bracket is displayed, but Firestore is blocking TDM access. Check the TDM Firestore rules.",
+        );
       },
     );
   }, [isAdmin]);
+
+  async function initializeTournamentData() {
+    const batch = writeBatch(db);
+
+    SEED_MATCHES.forEach((match) => {
+      batch.set(
+        doc(db, "tdmMatches", matchDocId(match.matchNumber)),
+        match,
+        { merge: true },
+      );
+    });
+
+    batch.set(
+      doc(db, "tdmOverlay", "state"),
+      {
+        activeMatch: null,
+        finalMatch: null,
+        completedMatches: [],
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    await batch.commit();
+  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -328,6 +343,8 @@ export default function TdmAdminPage() {
     setScore2("");
 
     try {
+      await initializeTournamentData();
+
       const batch = writeBatch(db);
       batch.set(
         doc(db, "tdmMatches", matchDocId(nextMatch.matchNumber)),
@@ -486,9 +503,83 @@ export default function TdmAdminPage() {
       setMessage(`${cleanName} added to TDM.`);
     } catch (error) {
       console.error("Unable to add TDM player:", error);
-      setMessage("Unable to add player.");
+      setMessage(
+        "Unable to add player. Firestore is blocking writes to tdmPlayers. Update the TDM Firestore rules, then try again.",
+      );
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openEditPlayer(player: TdmPlayer) {
+    setEditingPlayer(player);
+    setEditingPlayerName(player.name);
+    setMessage("");
+  }
+
+  async function savePlayerEdit(event: FormEvent) {
+    event.preventDefault();
+
+    if (!editingPlayer || savingPlayerEdit) return;
+
+    const cleanName = editingPlayerName.trim();
+
+    if (!cleanName) {
+      setMessage("Player name cannot be empty.");
+      return;
+    }
+
+    if (
+      players.some(
+        (player) =>
+          player.id !== editingPlayer.id &&
+          player.name.toLowerCase() === cleanName.toLowerCase(),
+      )
+    ) {
+      setMessage("That player name is already in the TDM roster.");
+      return;
+    }
+
+    const oldName = editingPlayer.name;
+    setSavingPlayerEdit(true);
+    setMessage("");
+
+    try {
+      const batch = writeBatch(db);
+
+      batch.update(doc(db, "tdmPlayers", editingPlayer.id), {
+        name: cleanName,
+        updatedAt: serverTimestamp(),
+      });
+
+      matches.forEach((match) => {
+        const updates: Record<string, unknown> = {};
+
+        if (match.player1 === oldName) updates.player1 = cleanName;
+        if (match.player2 === oldName) updates.player2 = cleanName;
+        if (match.winner === oldName) updates.winner = cleanName;
+
+        if (Object.keys(updates).length > 0) {
+          batch.set(
+            doc(db, "tdmMatches", matchDocId(match.matchNumber)),
+            updates,
+            { merge: true },
+          );
+        }
+      });
+
+      await batch.commit();
+
+      setEditingPlayer(null);
+      setEditingPlayerName("");
+      setMessage(`${oldName} was updated to ${cleanName}.`);
+    } catch (error) {
+      console.error("Unable to edit TDM player:", error);
+      setMessage(
+        "Unable to edit player. Check Firestore write access for tdmPlayers and tdmMatches.",
+      );
+    } finally {
+      setSavingPlayerEdit(false);
     }
   }
 
@@ -663,6 +754,13 @@ export default function TdmAdminPage() {
                 Start Match {nextMatch.matchNumber}
               </button>
             </div>
+          ) : matches.length === 0 ? (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black p-6 text-center">
+              <h2 className="text-2xl font-black uppercase">Bracket Not Loaded</h2>
+              <p className="mt-2 text-sm text-white/45">
+                The TDM bracket could not be loaded.
+              </p>
+            </div>
           ) : (
             <div className="mt-4 rounded-2xl border border-white/10 bg-black p-6 text-center">
               <h2 className="text-2xl font-black uppercase">All Listed Matches Completed</h2>
@@ -692,6 +790,14 @@ export default function TdmAdminPage() {
                     <div key={player.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white font-black text-black">{index + 1}</div>
                       <span className="min-w-0 flex-1 truncate font-black">{player.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => openEditPlayer(player)}
+                        disabled={deletingId === player.id}
+                        className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase text-white disabled:opacity-40"
+                      >
+                        Edit
+                      </button>
                       <button
                         type="button"
                         onClick={() => void removePlayer(player)}
@@ -733,6 +839,68 @@ export default function TdmAdminPage() {
           </section>
         </section>
       </div>
+
+      {editingPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+          <form
+            onSubmit={savePlayerEdit}
+            className="w-full max-w-lg rounded-3xl border border-white/15 bg-neutral-950 p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.25em] text-white/45">
+                  TDM Roster
+                </p>
+                <h2 className="mt-2 text-3xl font-black">Edit Player</h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!savingPlayerEdit) setEditingPlayer(null);
+                }}
+                className="rounded-lg border border-white/10 px-3 py-2 text-sm font-black"
+              >
+                Close
+              </button>
+            </div>
+
+            <label className="mt-6 block text-sm font-black text-white/70">
+              Player Name
+            </label>
+
+            <input
+              autoFocus
+              value={editingPlayerName}
+              onChange={(event) => setEditingPlayerName(event.target.value)}
+              className="mt-2 h-12 w-full rounded-xl border border-white/15 bg-black px-4 font-bold outline-none focus:border-white"
+            />
+
+            <p className="mt-3 text-xs text-white/45">
+              This keeps saved scores and match history while updating exact name references in the bracket.
+            </p>
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingPlayer(null)}
+                disabled={savingPlayerEdit}
+                className="rounded-xl border border-white/10 px-5 py-3 font-black disabled:opacity-40"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={savingPlayerEdit || !editingPlayerName.trim()}
+                className="rounded-xl bg-white px-5 py-3 font-black text-black disabled:opacity-40"
+              >
+                {savingPlayerEdit ? "Saving..." : "Save Name"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showAddPlayer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
