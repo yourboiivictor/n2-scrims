@@ -287,10 +287,8 @@ export default function AdminMatchesPage() {
     tournamentSettings.maps,
   ]);
 
-  const killPointValue = Math.max(
-    0,
-    Number(tournamentSettings.killPoints) || 0,
-  );
+  // Official N² Scrims scoring: every kill is worth 1 point.
+  const killPointValue = 1;
   const playersPerSquad = Math.max(
     1,
     Number(tournamentSettings.playersPerSquad) || 4,
