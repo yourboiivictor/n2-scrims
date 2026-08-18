@@ -2,2277 +2,480 @@
 
 import {
   collection,
-  collectionGroup,
-  deleteDoc,
   doc,
-  getDocs,
-  getDoc,
   onSnapshot,
+  orderBy,
   query,
-  serverTimestamp,
-  setDoc,
-  where,
-  writeBatch,
 } from "firebase/firestore";
-import {
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-  User,
-} from "firebase/auth";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { auth, db, googleProvider } from "@/firebase";
-import {
-  defaultTournamentSettings,
-  MatchScheduleItem,
-  TournamentSettings,
-} from "@/lib/tournamentClient";
-import AIMatchReview, {
-  type AiReviewSquad,
-} from "@/components/admin/AIMatchReview";
-
-const OWNER_EMAIL = "victornicetry2@gmail.com";
-type SquadPlayer = {
-  name?: string;
-  playerName?: string;
-  ign?: string;
-};
-
-type Squad = {
-  id: string;
-  squadName: string;
-  logoUrl?: string;
-  countryCode?: string;
-  countryName?: string;
-  players?: Array<string | SquadPlayer>;
-  status?: string;
-  slot?: number;
-};
-
-type PlayerControl = {
-  name: string;
-  kills: number;
-  isAlive: boolean;
-};
-
-type LiveSquad = {
-  squadId: string;
-  squadName: string;
-  logoUrl: string;
-  countryCode: string;
-  countryName: string;
-  slot: number;
-  placement: number | null;
-  players: PlayerControl[];
-  totalKills: number;
-  killPoints: number;
-  placementPoints: number;
-  matchPoints: number;
-  alivePlayers: number;
-  isEliminated: boolean;
-};
-
-type FinalizedTotals = {
-  totalKills: number;
-  placementPoints: number;
-  totalPoints: number;
-};
-
-type HistoricalResult = {
-  squadId: string;
-  squadName: string;
-  logoUrl: string;
-  slot: number;
-  players: PlayerControl[];
-  totalKills: number;
-  killPoints: number;
-  placementPoints: number;
-  totalPoints: number;
-};
-
+import { useEffect, useState } from "react";
+import { db } from "@/firebase";
 
 type LiveMatchSettings = {
   matchNumber: number;
   status: "not-started" | "live" | "finalized";
+  map?: string;
+  aliveSquads?: number;
+  alivePlayers?: number;
 };
 
-type ActiveMatchInfo = {
-  map: string;
-  startTime: string;
+type TournamentSettings = {
+  name: string;
+  season?: string;
+  eventName?: string;
+  matchesPlanned: number;
+  matchSchedule?: Array<{
+    id: string;
+    map: string;
+    startTime: string;
+  }>;
 };
 
-function getPlayerName(
-  player: string | SquadPlayer | undefined,
-  index: number,
-) {
-  if (typeof player === "string") {
-    return player.trim() || `Player ${index + 1}`;
-  }
+type Standing = {
+  squadId: string;
+  squadName: string;
+  logoUrl: string;
+  countryCode?: string;
+  countryName?: string;
+  totalKills: number;
+  totalPoints: number;
+};
 
-  if (player && typeof player === "object") {
-    return (
-      player.name?.trim() ||
-      player.playerName?.trim() ||
-      player.ign?.trim() ||
-      `Player ${index + 1}`
-    );
-  }
+const defaultTournament: TournamentSettings = {
+  name: "N² Scrims",
+  season: "Season 1",
+  eventName: "Event 1",
+  matchesPlanned: 1,
+  matchSchedule: [],
+};
 
-  return `Player ${index + 1}`;
-}
-
-function getPlacementPoints(placement: number | null) {
-  if (!placement || placement <= 0) return 0;
-  if (placement === 1) return 10;
-  if (placement === 2) return 8;
-  if (placement === 3) return 6;
-  if (placement >= 4 && placement <= 15) return 5;
-  return 2;
-}
-
-function calculateLiveSquad(
-  squad: LiveSquad,
-  killPointValue: number,
-): LiveSquad {
-  const totalKills = squad.players.reduce(
-    (total, player) => total + Math.max(0, Number(player.kills) || 0),
-    0,
-  );
-
-  const alivePlayers = squad.players.filter(
-    (player) => player.isAlive,
-  ).length;
-
-  const killPoints = totalKills * Math.max(0, killPointValue);
-  const placementPoints = getPlacementPoints(squad.placement);
-
-  return {
-    ...squad,
-    totalKills,
-    killPoints,
-    placementPoints,
-    matchPoints: killPoints + placementPoints,
-    alivePlayers,
-    isEliminated: alivePlayers === 0,
-  };
-}
-
-function createLiveSquad(
-  squad: Squad,
-  slot: number,
-  playersPerSquad: number,
-  killPointValue: number,
-): LiveSquad {
-  const sourcePlayers = Array.isArray(squad.players)
-    ? squad.players
-    : [];
-
-  const players: PlayerControl[] = Array.from(
-    { length: Math.max(1, playersPerSquad) },
-    (_, index) => ({
-      name: getPlayerName(sourcePlayers[index], index),
-      kills: 0,
-      isAlive: true,
-    }),
-  );
-
-  return calculateLiveSquad({
-    squadId: squad.id,
-    squadName: squad.squadName || "Unnamed Squad",
-    logoUrl: squad.logoUrl || "",
-    countryCode: squad.countryCode || "",
-    countryName: squad.countryName || "",
-    slot,
-    placement: null,
-    players,
-    totalKills: 0,
-    killPoints: 0,
-    placementPoints: 0,
-    matchPoints: 0,
-    alivePlayers: Math.max(1, playersPerSquad),
-    isEliminated: false,
-  }, killPointValue);
-}
-
-function sortSquadsBySlot(squads: Squad[]) {
-  return [...squads].sort((a, b) => {
-    const aSlot =
-      typeof a.slot === "number"
-        ? a.slot
-        : Number.MAX_SAFE_INTEGER;
-
-    const bSlot =
-      typeof b.slot === "number"
-        ? b.slot
-        : Number.MAX_SAFE_INTEGER;
-
-    if (aSlot !== bSlot) return aSlot - bSlot;
-
-    return (a.squadName || "").localeCompare(b.squadName || "");
+export default function LiveOverlayPage() {
+  const [liveMatch, setLiveMatch] = useState<LiveMatchSettings>({
+    matchNumber: 1,
+    status: "not-started",
+    aliveSquads: 0,
+    alivePlayers: 0,
   });
-}
 
-export default function AdminMatchesPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [squadsLoading, setSquadsLoading] = useState(true);
-  const [approvedSquads, setApprovedSquads] = useState<Squad[]>([]);
-  const [liveSquads, setLiveSquads] = useState<
-    Record<string, LiveSquad>
-  >({});
-  const [finalizedTotals, setFinalizedTotals] = useState<
-    Record<string, FinalizedTotals>
-  >({});
-  const [liveSettings, setLiveSettings] =
-    useState<LiveMatchSettings>({
-      matchNumber: 1,
-      status: "not-started",
-    });
-  const [tournamentSettings, setTournamentSettings] =
-    useState<TournamentSettings>(defaultTournamentSettings);
+  const [tournament, setTournament] =
+    useState<TournamentSettings>(defaultTournament);
 
-  const [message, setMessage] = useState("");
-  const [isStarting, setIsStarting] = useState(false);
-  const [isFinalizing, setIsFinalizing] = useState(false);
-  const [isPreparingNext, setIsPreparingNext] = useState(false);
-  const [isResettingTournament, setIsResettingTournament] = useState(false);
-  const [showPreviousMatches, setShowPreviousMatches] = useState(false);
-  const [previousMatchNumber, setPreviousMatchNumber] = useState(1);
-  const [previousResults, setPreviousResults] = useState<HistoricalResult[]>([]);
-  const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
-  const [isSavingPrevious, setIsSavingPrevious] = useState(false);
-  const [savingSquadId, setSavingSquadId] = useState<
-    string | null
-  >(null);
-  const [staffLoading, setStaffLoading] = useState(true);
-  const [hasAdminAccess, setHasAdminAccess] = useState(false);
-
-  const saveTimers = useRef<
-    Record<string, ReturnType<typeof setTimeout>>
+  const [standings, setStandings] = useState<Standing[]>([]);
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
   >({});
 
-  const isOwner =
-    user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
-  const isAdmin = isOwner || hasAdminAccess;
+  useEffect(() => {
+    return onSnapshot(
+      doc(db, "settings", "liveMatch"),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
 
-  const matchId = useMemo(
-    () => `match-${liveSettings.matchNumber}`,
-    [liveSettings.matchNumber],
-  );
+        const data = snapshot.data();
 
-  const matchSchedule = tournamentSettings.matchSchedule ?? [];
-  const currentMatchInfo: ActiveMatchInfo = useMemo(() => {
-    const scheduled = matchSchedule[liveSettings.matchNumber - 1];
-
-    return {
-      map:
-        scheduled?.map ||
-        tournamentSettings.maps?.[liveSettings.matchNumber - 1] ||
-        "Map not set",
-      startTime: scheduled?.startTime || "",
-    };
-  }, [
-    liveSettings.matchNumber,
-    matchSchedule,
-    tournamentSettings.maps,
-  ]);
-
-  const killPointValue = Math.max(
-    0,
-    Number(tournamentSettings.killPoints) || 0,
-  );
-  const playersPerSquad = Math.max(
-    1,
-    Number(tournamentSettings.playersPerSquad) || 4,
-  );
-  const plannedMatches = Math.max(
-    1,
-    matchSchedule.length ||
-      Number(tournamentSettings.matchesPlanned) ||
-      1,
-  );
-  const isLastPlannedMatch =
-    liveSettings.matchNumber >= plannedMatches;
-
-  const editableMatchNumbers = useMemo(
-    () =>
-      Array.from(
-        { length: Math.max(1, liveSettings.matchNumber) },
-        (_, index) => index + 1,
-      ),
-    [liveSettings.matchNumber],
-  );
-
-  const liveSquadList = useMemo(
-    () =>
-      Object.values(liveSquads).sort(
-        (a, b) => a.slot - b.slot,
-      ),
-    [liveSquads],
-  );
-
-  const aliveSquads = useMemo(
-    () =>
-      liveSquadList.filter((squad) => !squad.isEliminated)
-        .length,
-    [liveSquadList],
-  );
-
-  const alivePlayers = useMemo(
-    () =>
-      liveSquadList.reduce(
-        (total, squad) => total + squad.alivePlayers,
-        0,
-      ),
-    [liveSquadList],
-  );
-
-  const totalLiveKills = useMemo(
-    () =>
-      liveSquadList.reduce(
-        (total, squad) => total + squad.totalKills,
-        0,
-      ),
-    [liveSquadList],
-  );
-
-  const placementsSet = useMemo(
-    () =>
-      liveSquadList.filter((squad) => squad.placement).length,
-    [liveSquadList],
-  );
-
-  const signIn = async () => {
-    try {
-      setMessage("");
-
-      const provider =
-        googleProvider instanceof GoogleAuthProvider
-          ? googleProvider
-          : new GoogleAuthProvider();
-
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to sign in with Google.");
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to sign out.");
-    }
-  };
-
-  const loadFinalizedTotals = useCallback(async () => {
-    try {
-      const snapshot = await getDocs(
-        collectionGroup(db, "results"),
-      );
-
-      const totals: Record<string, FinalizedTotals> = {};
-
-      snapshot.forEach((resultDocument) => {
-        const data = resultDocument.data();
-
-        const squadId =
-          typeof data.squadId === "string"
-            ? data.squadId
-            : resultDocument.id;
-
-        if (!totals[squadId]) {
-          totals[squadId] = {
-            totalKills: 0,
-            placementPoints: 0,
-            totalPoints: 0,
-          };
-        }
-
-        totals[squadId].totalKills +=
-          Number(data.totalKills) || 0;
-
-        totals[squadId].placementPoints +=
-          Number(data.placementPoints) || 0;
-
-        totals[squadId].totalPoints +=
-          Number(data.totalPoints) || 0;
-      });
-
-      setFinalizedTotals(totals);
-      return totals;
-    } catch (error) {
-      console.error("Unable to load finalized totals:", error);
-      setFinalizedTotals({});
-return {};
-    }
+        setLiveMatch({
+          matchNumber: Number(data.matchNumber) || 1,
+          status:
+            data.status === "live" || data.status === "finalized"
+              ? data.status
+              : "not-started",
+          map: typeof data.map === "string" ? data.map : "",
+          aliveSquads: Number(data.aliveSquads) || 0,
+          alivePlayers: Number(data.alivePlayers) || 0,
+        });
+      },
+      (error) => {
+        console.error("Unable to load live match:", error);
+      },
+    );
   }, []);
 
-  const updatePublicStanding = useCallback(
-    async (
-      squad: LiveSquad,
-      suppliedTotals?: Record<string, FinalizedTotals>,
-    ) => {
-      const base =
-        (suppliedTotals || finalizedTotals)[squad.squadId] || {
-          totalKills: 0,
-          placementPoints: 0,
-          totalPoints: 0,
-        };
+  useEffect(() => {
+    return onSnapshot(
+      doc(db, "settings", "tournament"),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setTournament(defaultTournament);
+          return;
+        }
 
-      await setDoc(
-        doc(db, "standings", squad.squadId),
-        {
-          squadId: squad.squadId,
-          squadName: squad.squadName,
-          logoUrl: squad.logoUrl,
-          countryCode: squad.countryCode,
-          countryName: squad.countryName,
-          slot: squad.slot,
-          playerNames: squad.players.map(
-            (player) => player.name,
-          ),
+        const data = snapshot.data();
 
-          currentMatchNumber: liveSettings.matchNumber,
-          currentMatchKills: squad.totalKills,
-          currentMatchPlacementPoints:
-            squad.placementPoints,
-          currentMatchPoints: squad.matchPoints,
-
-          totalKills: base.totalKills + squad.totalKills,
-          placementPoints:
-            base.placementPoints + squad.placementPoints,
-          totalPoints: base.totalPoints + squad.matchPoints,
-
-          alivePlayers: squad.alivePlayers,
-          isEliminated: squad.isEliminated,
-          isLive: liveSettings.status === "live",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-    },
-    [
-      finalizedTotals,
-      liveSettings.matchNumber,
-      liveSettings.status,
-    ],
-  );
-
-  const saveLiveSquad = useCallback(
-    async (squad: LiveSquad) => {
-      if (!isAdmin || liveSettings.status !== "live") return;
-
-      try {
-        setSavingSquadId(squad.squadId);
-
-        await setDoc(
-          doc(
-            db,
-            "liveMatches",
-            matchId,
-            "squads",
-            squad.squadId,
-          ),
-          {
-            ...squad,
-            matchNumber: liveSettings.matchNumber,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-
-        await updatePublicStanding(squad);
-      } catch (error) {
-        console.error("Unable to save squad:", error);
-        setMessage(`Unable to save ${squad.squadName}.`);
-      } finally {
-        setSavingSquadId((current) =>
-          current === squad.squadId ? null : current,
-        );
-      }
-    },
-    [
-      isAdmin,
-      liveSettings.status,
-      liveSettings.matchNumber,
-      matchId,
-      updatePublicStanding,
-    ],
-  );
-
-  const scheduleSquadSave = useCallback(
-    (squad: LiveSquad, immediate = false) => {
-      const previousTimer =
-        saveTimers.current[squad.squadId];
-
-      if (previousTimer) {
-        clearTimeout(previousTimer);
-      }
-
-      if (immediate) {
-        void saveLiveSquad(squad);
-        return;
-      }
-
-      saveTimers.current[squad.squadId] = setTimeout(() => {
-        void saveLiveSquad(squad);
-      }, 400);
-    },
-    [saveLiveSquad],
-  );
-
-  const updateSquad = useCallback(
-    (
-      squadId: string,
-      updater: (current: LiveSquad) => LiveSquad,
-      immediate = false,
-    ) => {
-      setLiveSquads((currentSquads) => {
-        const current = currentSquads[squadId];
-
-        if (!current) return currentSquads;
-
-        const updated = calculateLiveSquad(
-          updater(current),
-          killPointValue,
-        );
-
-        scheduleSquadSave(updated, immediate);
-
-        return {
-          ...currentSquads,
-          [squadId]: updated,
-        };
-      });
-    },
-    [killPointValue, scheduleSquadSave],
-  );
-
-  const changePlayerKills = (
-    squadId: string,
-    playerIndex: number,
-    value: number,
-  ) => {
-    updateSquad(squadId, (current) => ({
-      ...current,
-      players: current.players.map((player, index) =>
-        index === playerIndex
-          ? {
-              ...player,
-              kills: Math.max(0, Number(value) || 0),
-            }
-          : player,
-      ),
-    }));
-  };
-
-  const changePlayerName = (
-    squadId: string,
-    playerIndex: number,
-    value: string,
-  ) => {
-    updateSquad(squadId, (current) => ({
-      ...current,
-      players: current.players.map((player, index) =>
-        index === playerIndex ? { ...player, name: value } : player,
-      ),
-    }));
-  };
-
-  const applyAiReviewSquad = (review: AiReviewSquad) => {
-    if (liveSettings.status !== "live") {
-      setMessage("Start the match before applying AI screenshot corrections.");
-      return;
-    }
-
-    const current = liveSquads[review.squadId];
-    if (!current) {
-      setMessage(`AI matched ${review.squadName}, but that squad is not loaded in the current match.`);
-      return;
-    }
-
-    updateSquad(
-      review.squadId,
-      (squad) => ({
-        ...squad,
-        placement:
-          typeof review.placement === "number" && review.placement > 0
-            ? review.placement
-            : squad.placement,
-        players: squad.players.map((player, playerIndex) => {
-          const aiPlayer = review.players.find(
-            (candidate) => candidate.playerIndex === playerIndex,
-          );
-          if (!aiPlayer) return player;
-
-          return {
-            ...player,
-            name:
-              aiPlayer.applySuggestedName && aiPlayer.screenshotName.trim()
-                ? aiPlayer.screenshotName.trim()
-                : player.name,
-            kills:
-              typeof aiPlayer.kills === "number"
-                ? Math.max(0, aiPlayer.kills)
-                : player.kills,
-          };
-        }),
-      }),
-      true,
-    );
-
-    setMessage(`Applied AI review to ${review.squadName}. Verify the squad card before finalizing.`);
-  };
-
-  const togglePlayerAlive = (
-    squadId: string,
-    playerIndex: number,
-  ) => {
-    updateSquad(
-      squadId,
-      (current) => ({
-        ...current,
-        players: current.players.map((player, index) =>
-          index === playerIndex
-            ? {
-                ...player,
-                isAlive: !player.isAlive,
-              }
-            : player,
-        ),
-      }),
-      true,
-    );
-  };
-
-  const changePlacement = (
-    squadId: string,
-    value: string,
-  ) => {
-    updateSquad(squadId, (current) => {
-      const parsed = Number.parseInt(value, 10);
-
-      return {
-        ...current,
-        placement:
-          value === "" || Number.isNaN(parsed)
-            ? null
-            : Math.max(1, parsed),
-      };
-    });
-  };
-
-  const initializeMatch = useCallback(
-    async (matchNumber: number) => {
-      if (!isAdmin || approvedSquads.length === 0) return;
-
-      setIsStarting(true);
-      setMessage("");
-
-      try {
-        const newMatchId = `match-${matchNumber}`;
-        const sortedSquads = sortSquadsBySlot(
-          approvedSquads,
-        );
-
-        const preparedSquads: Record<
-          string,
-          LiveSquad
-        > = {};
-
-        const batch = writeBatch(db);
-
-        sortedSquads.forEach((squad, index) => {
-          const liveSquad = createLiveSquad(
-            squad,
-            typeof squad.slot === "number"
-              ? squad.slot
-              : index + 1,
-            playersPerSquad,
-            killPointValue,
-          );
-
-          preparedSquads[squad.id] = liveSquad;
-
-          batch.set(
-            doc(
-              db,
-              "liveMatches",
-              newMatchId,
-              "squads",
-              squad.id,
-            ),
-            {
-              ...liveSquad,
-              matchNumber,
-              updatedAt: serverTimestamp(),
-            },
-          );
+        setTournament({
+          ...defaultTournament,
+          ...(data as Partial<TournamentSettings>),
+          matchSchedule: Array.isArray(data.matchSchedule)
+            ? data.matchSchedule
+            : [],
         });
-
-        batch.set(
-          doc(db, "liveMatches", newMatchId),
-          {
-            matchNumber,
-            status: "live",
-            map: currentMatchInfo.map,
-            startTime: currentMatchInfo.startTime,
-            gameMode: tournamentSettings.gameMode,
-            perspective: tournamentSettings.perspective,
-            server: tournamentSettings.server,
-            killPoints: killPointValue,
-            playersPerSquad,
-            startedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-
-        batch.set(
-          doc(db, "settings", "liveMatch"),
-          {
-            matchNumber,
-            status: "live",
-            map: currentMatchInfo.map,
-            startTime: currentMatchInfo.startTime,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-
-        await batch.commit();
-
-        const baseTotals = await loadFinalizedTotals();
-
-        await Promise.all(
-          Object.values(preparedSquads).map((squad) =>
-            updatePublicStanding(squad, baseTotals),
-          ),
-        );
-
-        setLiveSquads(preparedSquads);
-        setMessage(`Match ${matchNumber} is now live.`);
-      } catch (error) {
-        console.error("Unable to start match:", error);
-        setMessage("Unable to start match.");
-      } finally {
-        setIsStarting(false);
-      }
-    },
-    [
-      approvedSquads,
-      currentMatchInfo.map,
-      currentMatchInfo.startTime,
-      isAdmin,
-      killPointValue,
-      loadFinalizedTotals,
-      playersPerSquad,
-      tournamentSettings.gameMode,
-      tournamentSettings.perspective,
-      tournamentSettings.server,
-      updatePublicStanding,
-    ],
-  );
-
-  const finalizeMatch = async () => {
-    if (!isAdmin || liveSettings.status !== "live") return;
-
-    const missingPlacements = liveSquadList.filter(
-      (squad) => !squad.placement,
+      },
+      (error) => {
+        console.error("Unable to load tournament settings:", error);
+      },
     );
+  }, []);
 
-    if (missingPlacements.length > 0) {
-      setMessage(
-        `Add placement for every squad. Missing: ${missingPlacements
-          .map((squad) => squad.squadName)
-          .join(", ")}`,
-      );
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Finalize Match ${liveSettings.matchNumber}?`,
-    );
-
-    if (!confirmed) return;
-
-    setIsFinalizing(true);
-    setMessage("");
-
-    try {
-      Object.values(saveTimers.current).forEach((timer) =>
-        clearTimeout(timer),
-      );
-
-      const batch = writeBatch(db);
-
-      liveSquadList.forEach((squad) => {
-        batch.set(
-          doc(
-            db,
-            "matches",
-            matchId,
-            "results",
-            squad.squadId,
-          ),
-          {
-            matchNumber: liveSettings.matchNumber,
-            map: currentMatchInfo.map,
-            gameMode: tournamentSettings.gameMode,
-            perspective: tournamentSettings.perspective,
-            server: tournamentSettings.server,
-            killPointValue,
-            squadId: squad.squadId,
-            squadName: squad.squadName,
-            logoUrl: squad.logoUrl,
-            slot: squad.slot,
-            players: squad.players,
-            playerNames: squad.players.map(
-              (player) => player.name,
-            ),
-            placement: squad.placement,
-            totalKills: squad.totalKills,
-            killPoints: squad.killPoints,
-            placementPoints: squad.placementPoints,
-            totalPoints: squad.matchPoints,
-            finalizedAt: serverTimestamp(),
-          },
-        );
-      });
-
-      batch.set(
-        doc(db, "matches", matchId),
-        {
-          matchNumber: liveSettings.matchNumber,
-          status: "finalized",
-          map: currentMatchInfo.map,
-          startTime: currentMatchInfo.startTime,
-          gameMode: tournamentSettings.gameMode,
-          perspective: tournamentSettings.perspective,
-          server: tournamentSettings.server,
-          killPoints: killPointValue,
-          playersPerSquad,
-          squadCount: liveSquadList.length,
-          finalizedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      batch.set(
-        doc(db, "liveMatches", matchId),
-        {
-          matchNumber: liveSettings.matchNumber,
-          status: "finalized",
-          finalizedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      batch.set(
-        doc(db, "settings", "liveMatch"),
-        {
-          matchNumber: liveSettings.matchNumber,
-          status: "finalized",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      await batch.commit();
-
-      const standingsBatch = writeBatch(db);
-      const newTotals: Record<string, FinalizedTotals> = {};
-
-      liveSquadList.forEach((squad) => {
-        const previous =
-          finalizedTotals[squad.squadId] || {
-            totalKills: 0,
-            placementPoints: 0,
-            totalPoints: 0,
-          };
-
-        const totals = {
-          totalKills:
-            previous.totalKills + squad.totalKills,
-          placementPoints:
-            previous.placementPoints +
-            squad.placementPoints,
-          totalPoints:
-            previous.totalPoints + squad.matchPoints,
-        };
-
-        newTotals[squad.squadId] = totals;
-
-        standingsBatch.set(
-          doc(db, "standings", squad.squadId),
-          {
-            squadId: squad.squadId,
-            squadName: squad.squadName,
-            logoUrl: squad.logoUrl,
-            slot: squad.slot,
-            playerNames: squad.players.map(
-              (player) => player.name,
-            ),
-
-            currentMatchNumber:
-              liveSettings.matchNumber,
-            currentMatchKills: 0,
-            currentMatchPlacementPoints: 0,
-            currentMatchPoints: 0,
-
-            totalKills: totals.totalKills,
-            placementPoints: totals.placementPoints,
-            totalPoints: totals.totalPoints,
-
-            alivePlayers: 0,
-            isEliminated: false,
-            isLive: false,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-      });
-
-      await standingsBatch.commit();
-
-      setFinalizedTotals(newTotals);
-
-      setMessage(
-        `Match ${liveSettings.matchNumber} finalized successfully.`,
-      );
-    } catch (error) {
-      console.error("Unable to finalize match:", error);
-      setMessage("Unable to finalize match.");
-    } finally {
-      setIsFinalizing(false);
-    }
-  };
-
-  const loadPreviousMatch = useCallback(
-    async (matchNumber: number) => {
-      if (!isAdmin) return;
-
-      if (liveSettings.status === "live") {
-        setMessage(
-          "Finalize or stop the live match before editing previous match points.",
-        );
-        return;
-      }
-
-      setIsLoadingPrevious(true);
-      setMessage("");
-
-      try {
-        const snapshot = await getDocs(
-          collection(
-            db,
-            "matches",
-            `match-${matchNumber}`,
-            "results",
-          ),
-        );
-
-        const loaded = snapshot.docs
-          .map((resultDocument) => {
-            const data = resultDocument.data();
-
-            return {
-              squadId:
-                typeof data.squadId === "string"
-                  ? data.squadId
-                  : resultDocument.id,
-              squadName:
-                typeof data.squadName === "string"
-                  ? data.squadName
-                  : "Unnamed Squad",
-              logoUrl:
-                typeof data.logoUrl === "string"
-                  ? data.logoUrl
-                  : "",
-              slot: Number(data.slot) || 0,
-              players: Array.isArray(data.players)
-                ? data.players.map(
-                    (player: unknown, playerIndex: number) => {
-                      const value =
-                        player && typeof player === "object"
-                          ? (player as Record<string, unknown>)
-                          : {};
-
-                      return {
-                        name:
-                          typeof value.name === "string"
-                            ? value.name
-                            : `Player ${playerIndex + 1}`,
-                        kills: Math.max(0, Number(value.kills) || 0),
-                        isAlive:
-                          typeof value.isAlive === "boolean"
-                            ? value.isAlive
-                            : false,
-                      };
-                    },
-                  )
-                : Array.from(
-                    { length: playersPerSquad },
-                    (_, playerIndex) => ({
-                      name:
-                        Array.isArray(data.playerNames) &&
-                        typeof data.playerNames[playerIndex] === "string"
-                          ? data.playerNames[playerIndex]
-                          : `Player ${playerIndex + 1}`,
-                      kills: 0,
-                      isAlive: false,
-                    }),
-                  ),
-              totalKills: Number(data.totalKills) || 0,
-              killPoints:
-                Number(data.killPoints) ||
-                (Number(data.totalKills) || 0) * killPointValue,
-              placementPoints:
-                Number(data.placementPoints) || 0,
-              totalPoints: Number(data.totalPoints) || 0,
-            } satisfies HistoricalResult;
-          })
-          .sort((a, b) => {
-            if (b.totalPoints !== a.totalPoints) {
-              return b.totalPoints - a.totalPoints;
-            }
-
-            if (b.totalKills !== a.totalKills) {
-              return b.totalKills - a.totalKills;
-            }
-
-            return a.squadName.localeCompare(b.squadName);
-          });
-
-        setPreviousResults(loaded);
-
-        if (loaded.length === 0) {
-          setMessage(
-            `No finalized results were found for Match ${matchNumber}.`,
-          );
-        }
-      } catch (error) {
-        console.error("Unable to load previous match:", error);
-        setMessage("Unable to load previous match results.");
-      } finally {
-        setIsLoadingPrevious(false);
-      }
-    },
-    [isAdmin, liveSettings.status, playersPerSquad, killPointValue],
-  );
-
-  const rebuildStandingsFromFinalizedResults = useCallback(
-    async () => {
-      const snapshot = await getDocs(collectionGroup(db, "results"));
-
-      const totals: Record<
+  useEffect(() => {
+    return onSnapshot(collection(db, "squads"), (snapshot) => {
+      const countries: Record<
         string,
-        FinalizedTotals & {
-          squadName: string;
-          logoUrl: string;
-          slot: number;
-          playerNames: string[];
-        }
+        { countryCode: string; countryName: string }
       > = {};
 
-      snapshot.forEach((resultDocument) => {
-        const data = resultDocument.data();
-        const squadId =
-          typeof data.squadId === "string"
-            ? data.squadId
-            : resultDocument.id;
+      snapshot.docs.forEach((squadDocument) => {
+        const data = squadDocument.data();
+        const country = {
+          countryCode:
+            typeof data.countryCode === "string" ? data.countryCode : "",
+          countryName:
+            typeof data.countryName === "string" ? data.countryName : "",
+        };
 
-        if (!totals[squadId]) {
-          totals[squadId] = {
-            totalKills: 0,
-            placementPoints: 0,
-            totalPoints: 0,
+        countries[squadDocument.id] = country;
+
+        if (typeof data.squadName === "string" && data.squadName.trim()) {
+          countries[`name:${normalizeSquadName(data.squadName)}`] = country;
+        }
+      });
+
+      setSquadCountries(countries);
+    });
+  }, []);
+
+  useEffect(() => {
+    const standingsQuery = query(
+      collection(db, "standings"),
+      orderBy("totalPoints", "desc"),
+    );
+
+    return onSnapshot(
+      standingsQuery,
+      (snapshot) => {
+        const loaded: Standing[] = snapshot.docs.map((standingDocument) => {
+          const data = standingDocument.data();
+
+          return {
+            squadId: standingDocument.id,
             squadName:
               typeof data.squadName === "string"
                 ? data.squadName
                 : "Unnamed Squad",
             logoUrl:
-              typeof data.logoUrl === "string"
-                ? data.logoUrl
-                : "",
-            slot: Number(data.slot) || 0,
-            playerNames: Array.isArray(data.playerNames)
-              ? data.playerNames.filter(
-                  (name: unknown): name is string =>
-                    typeof name === "string",
-                )
-              : [],
+              typeof data.logoUrl === "string" ? data.logoUrl : "",
+            totalKills: Number(data.totalKills) || 0,
+            totalPoints: Number(data.totalPoints) || 0,
           };
-        }
+        });
 
-        totals[squadId].totalKills +=
-          Number(data.totalKills) || 0;
-        totals[squadId].placementPoints +=
-          Number(data.placementPoints) || 0;
-        totals[squadId].totalPoints +=
-          Number(data.totalPoints) || 0;
-      });
+        loaded.sort((a, b) => {
+          if (b.totalPoints !== a.totalPoints) {
+            return b.totalPoints - a.totalPoints;
+          }
 
-      const batch = writeBatch(db);
+          if (b.totalKills !== a.totalKills) {
+            return b.totalKills - a.totalKills;
+          }
 
-      approvedSquads.forEach((squad, index) => {
-        const total = totals[squad.id] || {
-          totalKills: 0,
-          placementPoints: 0,
-          totalPoints: 0,
-          squadName: squad.squadName,
-          logoUrl: squad.logoUrl || "",
-          slot:
-            typeof squad.slot === "number"
-              ? squad.slot
-              : index + 1,
-          playerNames: Array.isArray(squad.players)
-            ? squad.players.map((player, playerIndex) =>
-                getPlayerName(player, playerIndex),
-              )
-            : [],
-        };
+          return a.squadName.localeCompare(b.squadName);
+        });
 
-        batch.set(
-          doc(db, "standings", squad.id),
-          {
-            squadId: squad.id,
-            squadName: total.squadName,
-            logoUrl: total.logoUrl,
-            countryCode: squad.countryCode || "",
-            countryName: squad.countryName || "",
-            slot: total.slot,
-            playerNames: total.playerNames,
-            currentMatchNumber: liveSettings.matchNumber,
-            currentMatchKills: 0,
-            currentMatchPlacementPoints: 0,
-            currentMatchPoints: 0,
-            totalKills: total.totalKills,
-            placementPoints: total.placementPoints,
-            totalPoints: total.totalPoints,
-            alivePlayers: 0,
-            isEliminated: false,
-            isLive: false,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-      });
+        setStandings(loaded);
+      },
+      (error) => {
+        console.error("Unable to load standings:", error);
+      },
+    );
+  }, []);
 
-      await batch.commit();
+  const scheduledMatch =
+    tournament.matchSchedule?.[liveMatch.matchNumber - 1];
 
-      const refreshedTotals: Record<string, FinalizedTotals> = {};
+  const currentMap =
+    liveMatch.map || scheduledMatch?.map || "Map not set";
 
-      Object.entries(totals).forEach(([squadId, total]) => {
-        refreshedTotals[squadId] = {
-          totalKills: total.totalKills,
-          placementPoints: total.placementPoints,
-          totalPoints: total.totalPoints,
-        };
-      });
-
-      setFinalizedTotals(refreshedTotals);
-    },
-    [approvedSquads, liveSettings.matchNumber],
+  const plannedMatches = Math.max(
+    1,
+    tournament.matchSchedule?.length ||
+      Number(tournament.matchesPlanned) ||
+      1,
   );
 
-  const updatePreviousPlayerKills = (
-    squadId: string,
-    playerIndex: number,
-    value: number,
-  ) => {
-    setPreviousResults((current) =>
-      current.map((result) => {
-        if (result.squadId !== squadId) return result;
-
-        const players = result.players.map((player, index) =>
-          index === playerIndex
-            ? {
-                ...player,
-                kills: Math.max(0, Number(value) || 0),
-              }
-            : player,
-        );
-
-        const totalKills = players.reduce(
-          (total, player) => total + player.kills,
-          0,
-        );
-        const killPoints = totalKills * killPointValue;
-
-        return {
-          ...result,
-          players,
-          totalKills,
-          killPoints,
-          totalPoints: killPoints + result.placementPoints,
-        };
-      }),
-    );
-  };
-
-  const updatePreviousPlacementPoints = (
-    squadId: string,
-    value: number,
-  ) => {
-    setPreviousResults((current) =>
-      current.map((result) => {
-        if (result.squadId !== squadId) return result;
-
-        const placementPoints = Math.max(0, Number(value) || 0);
-
-        return {
-          ...result,
-          placementPoints,
-          totalPoints: result.killPoints + placementPoints,
-        };
-      }),
-    );
-  };
-
-  const savePreviousMatch = async () => {
-    if (!isAdmin || previousResults.length === 0) return;
-
-    if (liveSettings.status === "live") {
-      setMessage(
-        "Finalize or stop the live match before editing previous match points.",
-      );
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Save edited points for Match ${previousMatchNumber}? Tournament standings will be recalculated automatically.`,
-    );
-
-    if (!confirmed) return;
-
-    setIsSavingPrevious(true);
-    setMessage("");
-
-    try {
-      const batch = writeBatch(db);
-
-      previousResults.forEach((result) => {
-        batch.set(
-          doc(
-            db,
-            "matches",
-            `match-${previousMatchNumber}`,
-            "results",
-            result.squadId,
-          ),
-          {
-            players: result.players,
-            playerNames: result.players.map((player) => player.name),
-            totalKills: result.totalKills,
-            killPoints: result.killPoints,
-            placementPoints: result.placementPoints,
-            totalPoints: result.totalPoints,
-            editedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-      });
-
-      await batch.commit();
-      await rebuildStandingsFromFinalizedResults();
-
-      setMessage(
-        `Match ${previousMatchNumber} updated. Overall standings were recalculated.`,
-      );
-    } catch (error) {
-      console.error("Unable to save previous match:", error);
-      setMessage("Unable to save previous match edits.");
-    } finally {
-      setIsSavingPrevious(false);
-    }
-  };
-
-  const resetTournament = async () => {
-    if (!isAdmin || isResettingTournament) return;
-
-    const firstConfirmation = window.confirm(
-      "STOP THE TOURNAMENT AND RESET ALL POINTS?\n\nThis will stop the live match, reset standings to zero, and erase saved match results for this tournament. This cannot be undone.",
-    );
-
-    if (!firstConfirmation) return;
-
-    const typedConfirmation = window.prompt(
-      'Type RESET to permanently clear tournament points and match results.',
-    );
-
-    if (typedConfirmation?.trim().toUpperCase() !== "RESET") {
-      setMessage("Tournament reset cancelled.");
-      return;
-    }
-
-    setIsResettingTournament(true);
-    setMessage("Stopping tournament and resetting points...");
-
-    try {
-      Object.values(saveTimers.current).forEach((timer) =>
-        clearTimeout(timer),
-      );
-      saveTimers.current = {};
-
-      // Delete all public standings so every squad returns to zero.
-      const standingsSnapshot = await getDocs(collection(db, "standings"));
-      await Promise.all(
-        standingsSnapshot.docs.map((standingDocument) =>
-          deleteDoc(doc(db, "standings", standingDocument.id)),
-        ),
-      );
-
-      // Delete live-match squads and live-match parent documents.
-      const liveMatchesSnapshot = await getDocs(collection(db, "liveMatches"));
-      for (const liveMatchDocument of liveMatchesSnapshot.docs) {
-        const liveSquadsSnapshot = await getDocs(
-          collection(db, "liveMatches", liveMatchDocument.id, "squads"),
-        );
-
-        await Promise.all(
-          liveSquadsSnapshot.docs.map((squadDocument) =>
-            deleteDoc(
-              doc(
-                db,
-                "liveMatches",
-                liveMatchDocument.id,
-                "squads",
-                squadDocument.id,
-              ),
-            ),
-          ),
-        );
-
-        await deleteDoc(doc(db, "liveMatches", liveMatchDocument.id));
-      }
-
-      // Delete finalized match results too. loadFinalizedTotals() reads these,
-      // so keeping them would bring old points back after a reset.
-      const matchesSnapshot = await getDocs(collection(db, "matches"));
-      for (const matchDocument of matchesSnapshot.docs) {
-        const resultsSnapshot = await getDocs(
-          collection(db, "matches", matchDocument.id, "results"),
-        );
-
-        await Promise.all(
-          resultsSnapshot.docs.map((resultDocument) =>
-            deleteDoc(
-              doc(
-                db,
-                "matches",
-                matchDocument.id,
-                "results",
-                resultDocument.id,
-              ),
-            ),
-          ),
-        );
-
-        await deleteDoc(doc(db, "matches", matchDocument.id));
-      }
-
-      await setDoc(
-        doc(db, "settings", "liveMatch"),
-        {
-          matchNumber: 1,
-          status: "not-started",
-          map: matchSchedule[0]?.map || tournamentSettings.maps?.[0] || "",
-          startTime: matchSchedule[0]?.startTime || "",
-          aliveSquads: 0,
-          alivePlayers: 0,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      setLiveSquads({});
-      setFinalizedTotals({});
-      setSavingSquadId(null);
-
-      setMessage(
-        "Tournament stopped. All match results and standings points were reset. Match 1 is ready to start again.",
-      );
-    } catch (error) {
-      console.error("Unable to reset tournament:", error);
-      setMessage(
-        "Reset failed. Some tournament data may still remain. Check Firestore before starting another match.",
-      );
-    } finally {
-      setIsResettingTournament(false);
-    }
-  };
-
-  const prepareNextMatch = async () => {
-    if (!isAdmin || liveSettings.status !== "finalized") {
-      return;
-    }
-
-    if (isLastPlannedMatch) {
-      setMessage(
-        `All ${plannedMatches} planned matches are complete.`,
-      );
-      return;
-    }
-
-    setIsPreparingNext(true);
-    setMessage("");
-
-    try {
-      const nextMatchNumber =
-        liveSettings.matchNumber + 1;
-
-      await setDoc(
-        doc(db, "settings", "liveMatch"),
-        {
-          matchNumber: nextMatchNumber,
-          status: "not-started",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      setLiveSquads({});
-
-      setMessage(
-        `Match ${nextMatchNumber} is ready.`,
-      );
-    } catch (error) {
-      console.error(
-        "Unable to prepare next match:",
-        error,
-      );
-      setMessage("Unable to prepare next match.");
-    } finally {
-      setIsPreparingNext(false);
-    }
-  };
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (currentUser) => {
-        setUser(currentUser);
-        setAuthLoading(false);
-      },
-    );
-
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkStaffAccess() {
-      if (!user?.email) {
-        setHasAdminAccess(false);
-        setStaffLoading(false);
-        return;
-      }
-
-      const normalizedEmail = user.email.toLowerCase();
-
-      if (normalizedEmail === OWNER_EMAIL.toLowerCase()) {
-        setHasAdminAccess(true);
-        setStaffLoading(false);
-        return;
-      }
-
-      try {
-        setStaffLoading(true);
-        const staffSnapshot = await getDoc(
-          doc(db, "staff", normalizedEmail),
-        );
-
-        if (!cancelled) {
-          const data = staffSnapshot.data();
-          setHasAdminAccess(
-            staffSnapshot.exists() &&
-              data?.active === true &&
-              data?.role === "admin",
-          );
-        }
-      } catch (error) {
-        console.error("Unable to verify staff access:", error);
-        if (!cancelled) setHasAdminAccess(false);
-      } finally {
-        if (!cancelled) setStaffLoading(false);
-      }
-    }
-
-    void checkStaffAccess();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  useEffect(() => {
-    if (!isAdmin) {
-      setApprovedSquads([]);
-      setSquadsLoading(false);
-      return;
-    }
-
-    setSquadsLoading(true);
-
-    const squadsQuery = query(
-      collection(db, "squads"),
-      where("status", "==", "approved"),
-    );
-
-    const unsubscribe = onSnapshot(
-      squadsQuery,
-      (snapshot) => {
-        const squads = snapshot.docs.map(
-          (squadDocument) => ({
-            id: squadDocument.id,
-            ...(squadDocument.data() as Omit<
-              Squad,
-              "id"
-            >),
-          }),
-        );
-
-        setApprovedSquads(sortSquadsBySlot(squads));
-        setSquadsLoading(false);
-      },
-      (error) => {
-        console.error(
-          "Unable to load approved squads:",
-          error,
-        );
-        setMessage("Unable to load approved squads.");
-        setSquadsLoading(false);
-      },
-    );
-
-    return unsubscribe;
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    const unsubscribe = onSnapshot(
-      doc(db, "settings", "liveMatch"),
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          setLiveSettings({
-            matchNumber: 1,
-            status: "not-started",
-          });
-          return;
-        }
-
-        const data = snapshot.data();
-
-        setLiveSettings({
-          matchNumber: Number(data.matchNumber) || 1,
-          status:
-            data.status === "live" ||
-            data.status === "finalized"
-              ? data.status
-              : "not-started",
-        });
-      },
-      (error) => {
-        console.error(
-          "Unable to load live match settings:",
-          error,
-        );
-      },
-    );
-
-    return unsubscribe;
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    const unsubscribe = onSnapshot(
-      doc(db, "settings", "tournament"),
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          setTournamentSettings(defaultTournamentSettings);
-          return;
-        }
-
-        const data = snapshot.data();
-
-        const schedule: MatchScheduleItem[] =
-          Array.isArray(data.matchSchedule)
-            ? data.matchSchedule
-                .map((item: unknown, index: number) => {
-                  const value =
-                    item && typeof item === "object"
-                      ? (item as Record<string, unknown>)
-                      : {};
-
-                  return {
-                    id:
-                      typeof value.id === "string"
-                        ? value.id
-                        : `match-${index + 1}`,
-                    map:
-                      typeof value.map === "string"
-                        ? value.map
-                        : "Erangel",
-                    startTime:
-                      typeof value.startTime === "string"
-                        ? value.startTime
-                        : "",
-                  };
-                })
-            : [];
-
-        setTournamentSettings({
-          ...defaultTournamentSettings,
-          ...(data as Partial<TournamentSettings>),
-          matchSchedule:
-            schedule.length > 0
-              ? schedule
-              : defaultTournamentSettings.matchSchedule,
-          maps:
-            Array.isArray(data.maps)
-              ? data.maps.filter(
-                  (map): map is string =>
-                    typeof map === "string",
-                )
-              : defaultTournamentSettings.maps,
-          rules:
-            Array.isArray(data.rules)
-              ? data.rules.filter(
-                  (rule): rule is string =>
-                    typeof rule === "string",
-                )
-              : defaultTournamentSettings.rules,
-        });
-      },
-      (error) => {
-        console.error(
-          "Unable to load tournament settings:",
-          error,
-        );
-        setMessage("Unable to load tournament settings.");
-      },
-    );
-
-    return unsubscribe;
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    void loadFinalizedTotals();
-  }, [isAdmin, loadFinalizedTotals]);
-
-  useEffect(() => {
-    if (
-      !isAdmin ||
-      liveSettings.status === "not-started"
-    ) {
-      setLiveSquads({});
-      return;
-    }
-
-    const unsubscribe = onSnapshot(
-      collection(
-        db,
-        "liveMatches",
-        matchId,
-        "squads",
-      ),
-      (snapshot) => {
-        const loaded: Record<string, LiveSquad> = {};
-
-        snapshot.forEach((squadDocument) => {
-          const data =
-            squadDocument.data() as LiveSquad;
-
-          loaded[squadDocument.id] =
-            calculateLiveSquad(
-              {
-                ...data,
-                squadId: squadDocument.id,
-                players: Array.isArray(data.players)
-                  ? data.players
-                  : [],
-              },
-              killPointValue,
-            );
-        });
-
-        setLiveSquads(loaded);
-      },
-      (error) => {
-        console.error(
-          "Unable to load live match squads:",
-          error,
-        );
-        setMessage(
-          "Unable to load live match squads.",
-        );
-      },
-    );
-
-    return unsubscribe;
-  }, [
-    isAdmin,
-    killPointValue,
-    liveSettings.status,
-    matchId,
-  ]);
-
-  useEffect(() => {
-    const timers = saveTimers.current;
-
-    return () => {
-      Object.values(timers).forEach((timer) =>
-        clearTimeout(timer),
-      );
-    };
-  }, []);
-
-  if (authLoading || staffLoading) {
-    return (
-      <main className="min-h-screen bg-slate-950 p-6 text-white">
-        Checking admin account...
-      </main>
-    );
-  }
-
-  if (!user) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-950 p-5 text-white">
-        <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 text-center">
-          <h1 className="text-2xl font-black">
-            N² Scrims Admin
-          </h1>
-
-          <p className="mt-2 text-sm text-slate-400">
-            Sign in with the administrator account.
-          </p>
-
-          <button
-            type="button"
-            onClick={signIn}
-            className="mt-6 w-full rounded-lg bg-white px-4 py-3 font-bold text-black"
-          >
-            Sign in with Google
-          </button>
-
-          {message && (
-            <p className="mt-3 text-sm text-red-400">
-              {message}
-            </p>
-          )}
-        </div>
-      </main>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-950 p-5 text-white">
-        <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-slate-900 p-6 text-center">
-          <h1 className="text-2xl font-black text-red-400">
-            Access denied
-          </h1>
-
-          <p className="mt-2 text-sm text-slate-300">
-            This Google account is not authorized.
-          </p>
-
-          <p className="mt-1 text-xs text-slate-500">
-            {user.email}
-          </p>
-
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="mt-5 rounded-lg bg-white px-4 py-2 font-bold text-black"
-          >
-            Sign out
-          </button>
-        </div>
-      </main>
-    );
-  }
+  const visibleStandings = standings.slice(0, 10);
 
   return (
-    <main className="min-h-screen bg-slate-950 px-3 py-3 text-white">
-      <div className="mx-auto max-w-[1900px]">
-        <header className="rounded-2xl border border-white/10 bg-slate-900/90 p-4 shadow-xl">
-          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
-                N² Scrims Tournament Control
-              </p>
+    <main className="pointer-events-none min-h-screen bg-transparent text-white antialiased">
+      <style jsx global>{`
+        html,
+        body {
+          background: transparent !important;
+        }
 
-              <h1 className="mt-1 text-3xl font-black">
-                Match {liveSettings.matchNumber}
-              </h1>
+        body {
+          margin: 0;
+          overflow: hidden;
+        }
 
-              <p className="text-xs text-slate-400">
-                {currentMatchInfo.map}
-                {currentMatchInfo.startTime
-                  ? ` · ${currentMatchInfo.startTime}`
-                  : ""}
-                {" · "}
-                {tournamentSettings.gameMode}
-                {" · "}
-                {tournamentSettings.perspective}
-                {" · "}
-                {tournamentSettings.server}
-              </p>
-            </div>
+        @keyframes overlay-enter {
+          from {
+            opacity: 0;
+            transform: translateX(55px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
 
-            <div className="flex flex-wrap gap-2">
-              {liveSettings.status === "not-started" && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void initializeMatch(
-                      liveSettings.matchNumber,
-                    )
-                  }
-                  disabled={
-                    isStarting ||
-                    squadsLoading ||
-                    approvedSquads.length === 0
-                  }
-                  className="rounded-lg bg-green-500 px-5 py-2.5 text-sm font-black text-black disabled:opacity-50"
-                >
-                  {isStarting
-                    ? "Starting..."
-                    : "Start Match"}
-                </button>
-              )}
+        @keyframes live-pulse {
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.45;
+          }
+        }
 
-              {liveSettings.status === "live" && (
-                <button
-                  type="button"
-                  onClick={() => void finalizeMatch()}
-                  disabled={isFinalizing}
-                  className="rounded-lg bg-red-500 px-5 py-2.5 text-sm font-black text-white disabled:opacity-50"
-                >
-                  {isFinalizing
-                    ? "Finalizing..."
-                    : "🏁 Finalize Match"}
-                </button>
-              )}
+        .overlay-enter {
+          animation: overlay-enter 0.55s ease-out both;
+        }
 
-              {liveSettings.status === "finalized" && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void prepareNextMatch()
-                  }
-                  disabled={
-                    isPreparingNext || isLastPlannedMatch
-                  }
-                  className="rounded-lg bg-violet-500 px-5 py-2.5 text-sm font-black text-white disabled:opacity-50"
-                >
-                  {isLastPlannedMatch
-                    ? "Tournament Matches Complete"
-                    : isPreparingNext
-                      ? "Preparing..."
-                      : "Prepare Next Match"}
-                </button>
-              )}
+        .live-pulse {
+          animation: live-pulse 1.3s ease-in-out infinite;
+        }
 
-              <button
-                type="button"
-                onClick={() => {
-                  const nextOpen = !showPreviousMatches;
-                  setShowPreviousMatches(nextOpen);
+        @media (max-width: 900px) {
+          .overlay-enter {
+            width: min(92vw, 520px) !important;
+            min-width: 0 !important;
+            height: 94vh !important;
+          }
+        }
+      `}</style>
 
-                  if (nextOpen) {
-                    setPreviousMatchNumber(
-                      Math.max(
-                        1,
-                        liveSettings.status === "finalized"
-                          ? liveSettings.matchNumber
-                          : liveSettings.matchNumber - 1,
-                      ),
-                    );
-                    void loadPreviousMatch(
-                      Math.max(
-                        1,
-                        liveSettings.status === "finalized"
-                          ? liveSettings.matchNumber
-                          : liveSettings.matchNumber - 1,
-                      ),
-                    );
-                  }
-                }}
-                disabled={liveSettings.status === "live"}
-                className="rounded-lg border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                ✏️ Edit Previous Matches
-              </button>
+      <div className="flex min-h-screen items-center justify-end px-6 py-4">
+        <aside className="overlay-enter flex h-[94vh] w-[min(32vw,520px)] min-w-[440px] flex-col overflow-hidden border border-white/20 bg-transparent">
+          <div className="h-px bg-white/40" />
 
-              <button
-                type="button"
-                onClick={() => void resetTournament()}
-                disabled={isResettingTournament}
-                className="rounded-lg border border-red-500/50 bg-red-950 px-5 py-2.5 text-sm font-black text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Stops the tournament and permanently resets standings and saved match results."
-              >
-                {isResettingTournament
-                  ? "Resetting..."
-                  : "⛔ Stop & Reset Tournament"}
-              </button>
+          <header className="relative overflow-hidden border-b border-white bg-white px-6 py-5 text-black">
+            <div className="absolute inset-0 bg-transparent" />
 
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold"
-              >
-                Sign out
-              </button>
-            </div>
-          </div>
+            <div className="relative">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-black/20 bg-transparent">
+                    {/* Place your logo at: public/n2-logo.png */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/n2-logo.png"
+                      alt="N² logo"
+                      className="h-full w-full object-contain p-1.5"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                        const fallback =
+                          event.currentTarget.nextElementSibling as HTMLElement | null;
 
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-            <StatBox
-              label="Status"
-              value={liveSettings.status}
-            />
+                        if (fallback) {
+                          fallback.style.display = "flex";
+                        }
+                      }}
+                    />
 
-            <StatBox
-              label="Map"
-              value={currentMatchInfo.map}
-            />
+                    <span className="hidden h-full w-full items-center justify-center text-xl font-black italic text-black">
+                      N²
+                    </span>
+                  </div>
 
-            <StatBox
-              label="Kill Value"
-              value={`${killPointValue} pts`}
-            />
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-black uppercase tracking-[0.28em] text-black">
+                      {tournament.name}
+                    </p>
 
-            <StatBox
-              label="Squads"
-              value={String(
-                liveSquadList.length ||
-                  approvedSquads.length,
-              )}
-            />
+                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-neutral-700">
+                      {[tournament.season, tournament.eventName]
+                        .filter(Boolean)
+                        .join(" • ")}
+                    </p>
+                  </div>
+                </div>
 
-            <StatBox
-              label="Alive Squads"
-              value={`${aliveSquads}/${liveSquadList.length}`}
-            />
-
-            <StatBox
-              label="Alive Players"
-              value={`${alivePlayers}/${liveSquadList.length * playersPerSquad}`}
-            />
-
-            <StatBox
-              label="Total Kills"
-              value={String(totalLiveKills)}
-            />
-
-            <StatBox
-              label="Placements"
-              value={`${placementsSet}/${liveSquadList.length}`}
-            />
-          </div>
-
-          {message && (
-            <div className="mt-3 rounded-lg border border-violet-400/20 bg-violet-400/10 px-3 py-2 text-xs text-violet-100">
-              {message}
-            </div>
-          )}
-        </header>
-
-        <AIMatchReview
-          matchNumber={liveSettings.matchNumber}
-          matchStatus={liveSettings.status}
-          killPointValue={killPointValue}
-          squads={liveSquadList.map((squad) => ({
-            squadId: squad.squadId,
-            squadName: squad.squadName,
-            slot: squad.slot,
-            placement: squad.placement,
-            players: squad.players.map((player, playerIndex) => ({
-              playerIndex,
-              name: player.name,
-              kills: player.kills,
-            })),
-          }))}
-          onApplySquad={applyAiReviewSquad}
-        />
-
-        {showPreviousMatches && (
-          <section className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
-                  Historical Scoring
-                </p>
-                <h2 className="mt-1 text-2xl font-black">
-                  Edit Previous Match Points
-                </h2>
-                <p className="mt-1 text-xs text-slate-400">
-                  Edit each player&apos;s kills and placement points. Team kills, kill points, total points, and overall standings recalculate automatically when you save.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-2">
-                <label>
-                  <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
-                    Match
+                <div className="flex shrink-0 items-center gap-2 rounded-full border border-black/30 bg-transparent px-3 py-1.5">
+                  <span className="live-pulse h-2 w-2 rounded-full bg-black" />
+                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-black">
+                    {liveMatch.status === "live" ? "Live" : liveMatch.status}
                   </span>
-                  <select
-                    value={previousMatchNumber}
-                    onChange={(event) => {
-                      const nextMatch = Number(event.target.value);
-                      setPreviousMatchNumber(nextMatch);
-                      void loadPreviousMatch(nextMatch);
-                    }}
-                    className="h-10 rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-black outline-none focus:border-violet-400"
-                  >
-                    {editableMatchNumbers.map((number) => (
-                      <option key={number} value={number}>
-                        Match {number}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    void loadPreviousMatch(previousMatchNumber)
-                  }
-                  disabled={isLoadingPrevious}
-                  className="h-10 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-black disabled:opacity-50"
-                >
-                  {isLoadingPrevious ? "Loading..." : "Reload"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void savePreviousMatch()}
-                  disabled={
-                    isSavingPrevious ||
-                    isLoadingPrevious ||
-                    previousResults.length === 0
-                  }
-                  className="h-10 rounded-lg bg-violet-600 px-5 text-sm font-black disabled:opacity-50"
-                >
-                  {isSavingPrevious
-                    ? "Saving..."
-                    : "Save Match Changes"}
-                </button>
-              </div>
-            </div>
-
-            {isLoadingPrevious ? (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-5 text-center text-sm text-slate-400">
-                Loading Match {previousMatchNumber}...
-              </div>
-            ) : previousResults.length === 0 ? (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-5 text-center text-sm text-slate-400">
-                No saved results for Match {previousMatchNumber}.
-              </div>
-            ) : (
-              <div className="mt-4 overflow-x-auto">
-                <div className="min-w-[900px] space-y-3">
-                  {previousResults.map((result) => (
-                    <div
-                      key={result.squadId}
-                      className="rounded-xl border border-white/10 bg-black/20 p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="rounded-md bg-violet-600 px-2 py-1 text-xs font-black">
-                          #{result.slot || "-"}
-                        </span>
-
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
-                          {result.logoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={result.logoUrl}
-                              alt=""
-                              className="h-full w-full object-contain p-1"
-                            />
-                          ) : (
-                            <span className="text-[7px] text-slate-500">
-                              LOGO
-                            </span>
-                          )}
-                        </div>
-
-                        <span className="font-black">
-                          {result.squadName}
-                        </span>
-                      </div>
-
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                        {result.players.map((player, playerIndex) => (
-                          <label
-                            key={`${result.squadId}-history-${playerIndex}`}
-                            className="rounded-lg border border-white/10 bg-slate-950 p-2"
-                          >
-                            <span className="block truncate text-[10px] font-bold text-slate-400">
-                              {player.name}
-                            </span>
-                            <span className="mt-1 block text-[9px] font-bold uppercase text-slate-600">
-                              Kills
-                            </span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={player.kills}
-                              onChange={(event) =>
-                                updatePreviousPlayerKills(
-                                  result.squadId,
-                                  playerIndex,
-                                  Number(event.target.value),
-                                )
-                              }
-                              className="mt-1 h-9 w-full rounded-md border border-white/10 bg-black px-2 text-center font-black outline-none focus:border-violet-400"
-                            />
-                          </label>
-                        ))}
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-4 gap-2">
-                        <div className="rounded-lg border border-white/10 bg-slate-950 p-2 text-center">
-                          <p className="text-[9px] font-bold uppercase text-slate-500">Team Kills</p>
-                          <p className="mt-1 text-lg font-black">{result.totalKills}</p>
-                        </div>
-                        <div className="rounded-lg border border-white/10 bg-slate-950 p-2 text-center">
-                          <p className="text-[9px] font-bold uppercase text-slate-500">Kill Pts</p>
-                          <p className="mt-1 text-lg font-black">{result.killPoints}</p>
-                        </div>
-                        <label className="rounded-lg border border-white/10 bg-slate-950 p-2 text-center">
-                          <span className="block text-[9px] font-bold uppercase text-slate-500">Place Pts</span>
-                          <input
-                            type="number"
-                            min={0}
-                            value={result.placementPoints}
-                            onChange={(event) =>
-                              updatePreviousPlacementPoints(
-                                result.squadId,
-                                Number(event.target.value),
-                              )
-                            }
-                            className="mt-1 h-8 w-full rounded-md border border-white/10 bg-black px-2 text-center font-black outline-none focus:border-violet-400"
-                          />
-                        </label>
-                        <div className="rounded-lg border border-violet-400/30 bg-violet-400/10 p-2 text-center">
-                          <p className="text-[9px] font-bold uppercase text-violet-300">Total Pts</p>
-                          <p className="mt-1 text-lg font-black text-violet-300">{result.totalPoints}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
-            )}
+
+              <div className="mt-5 flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-black">
+                    Live Tournament
+                  </p>
+                  <h1 className="mt-1 text-4xl font-black uppercase italic leading-none">
+                    Standings
+                  </h1>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+                    Match
+                  </p>
+                  <p className="text-2xl font-black text-black">
+                    {liveMatch.matchNumber}/{plannedMatches}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                <InfoBox label="Map" value={currentMap} />
+                <InfoBox
+                  label="Alive"
+                  value={
+                    liveMatch.aliveSquads
+                      ? `${liveMatch.aliveSquads} SQ`
+                      : "—"
+                  }
+                />
+                <InfoBox
+                  label="Players"
+                  value={
+                    liveMatch.alivePlayers
+                      ? String(liveMatch.alivePlayers)
+                      : "—"
+                  }
+                />
+              </div>
+            </div>
+          </header>
+
+          <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
+            <div className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+              <span>Rank</span>
+              <span />
+              <span />
+              <span>Team</span>
+              <span className="text-center">Kills</span>
+              <span className="text-center">Total</span>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {visibleStandings.length === 0 ? (
+                <div className="border border-white/20 bg-black/20 p-8 text-center text-sm font-bold text-neutral-300">
+                  Waiting for standings...
+                </div>
+              ) : (
+                visibleStandings.map((standing, index) => (
+                  <StandingRow
+                    key={standing.squadId}
+                    standing={{
+                      ...standing,
+                      countryCode:
+                        squadCountries[standing.squadId]?.countryCode ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryCode ||
+                        "",
+                      countryName:
+                        squadCountries[standing.squadId]?.countryName ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryName ||
+                        "",
+                    }}
+                    rank={index + 1}
+                  />
+                ))
+              )}
+            </div>
           </section>
-        )}
 
-        {squadsLoading ? (
-          <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-6 text-sm">
-            Loading approved squads...
-          </div>
-        ) : approvedSquads.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-yellow-400/20 bg-yellow-400/10 p-6 text-sm text-yellow-100">
-            There are no approved squads.
-          </div>
-        ) : liveSettings.status === "not-started" ? (
-          <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-8 text-center">
-            <h2 className="text-xl font-black">
-              Match {liveSettings.matchNumber} is ready
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-400">
-              {currentMatchInfo.map}
-              {currentMatchInfo.startTime
-                ? ` · Starts ${currentMatchInfo.startTime}`
-                : ""}
-              {" · "}
-              {approvedSquads.length} approved squads
-              will be loaded.
-            </p>
-          </div>
-        ) : (
-          <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {liveSquadList.map((squad) => (
-              <SquadCard
-                key={squad.squadId}
-                squad={squad}
-                disabled={
-                  liveSettings.status !== "live"
-                }
-                isSaving={
-                  savingSquadId === squad.squadId
-                }
-                onPlacementChange={(value) =>
-                  changePlacement(
-                    squad.squadId,
-                    value,
-                  )
-                }
-                onNameChange={(playerIndex, value) =>
-                  changePlayerName(
-                    squad.squadId,
-                    playerIndex,
-                    value,
-                  )
-                }
-                onKillsChange={(
-                  playerIndex,
-                  value,
-                ) =>
-                  changePlayerKills(
-                    squad.squadId,
-                    playerIndex,
-                    value,
-                  )
-                }
-                onToggleAlive={(playerIndex) =>
-                  togglePlayerAlive(
-                    squad.squadId,
-                    playerIndex,
-                  )
-                }
-              />
-            ))}
-          </section>
-        )}
-
-        <footer className="mt-4 flex flex-col gap-2 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-xs text-slate-400 lg:flex-row lg:items-center lg:justify-between">
-          <span>
-            🟢 All changes save automatically
-          </span>
-
-          <span>
-            Kill Value: {killPointValue} pts · 1st: 10 ·
-            2nd: 8 · 3rd: 6 · 4th–15th: 5 · 16th+: 2
-          </span>
-        </footer>
+        </aside>
       </div>
     </main>
   );
 }
 
-function StatBox({
+function normalizeSquadName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+
+function CountryFlagSvg({ code, label }: { code: string; label: string }) {
+  const c = code.trim().toUpperCase();
+
+  const common = {
+    width: 32,
+    height: 20,
+    viewBox: "0 0 32 20",
+    role: "img" as const,
+    "aria-label": label,
+    className: "h-5 w-8 rounded-sm shadow-sm",
+  };
+
+  if (c === "KI") {
+    return (
+      <svg {...common}>
+        <rect width="32" height="10" fill="#CE1126" />
+        <rect y="10" width="32" height="10" fill="#003F87" />
+        <path d="M0 11 C4 9 8 13 12 11 S20 9 24 11 S28 13 32 11 V13 C28 15 24 11 20 13 S12 15 8 13 S4 11 0 13Z" fill="#fff" />
+        <path d="M0 15 C4 13 8 17 12 15 S20 13 24 15 S28 17 32 15 V17 C28 19 24 15 20 17 S12 19 8 17 S4 15 0 17Z" fill="#fff" />
+        <circle cx="16" cy="7" r="3" fill="#FCD116" />
+        <path d="M16 1.8 L16.7 4.3 L19.2 3.6 L17.6 5.6 L20 6.5 L17.4 6.8 L18.6 9 L16.6 7.5 L16 10 L15.4 7.5 L13.4 9 L14.6 6.8 L12 6.5 L14.4 5.6 L12.8 3.6 L15.3 4.3Z" fill="#FCD116" />
+      </svg>
+    );
+  }
+
+  if (c === "TO") {
+    return (
+      <svg {...common}>
+        <rect width="32" height="20" fill="#C10000" />
+        <rect width="14" height="9" fill="#fff" />
+        <rect x="5.5" y="1" width="3" height="7" fill="#C10000" />
+        <rect x="3.5" y="3" width="7" height="3" fill="#C10000" />
+      </svg>
+    );
+  }
+
+  if (c === "SB") {
+    return (
+      <svg {...common}>
+        <polygon points="0,0 32,0 0,20" fill="#0051BA" />
+        <polygon points="32,0 32,20 0,20" fill="#215B33" />
+        <polygon points="0,17 28,0 32,0 0,20" fill="#FCD116" />
+        {[3,7,11,5,9].map((x, i) => (
+          <circle key={i} cx={x} cy={i < 3 ? 3 : 7} r="0.8" fill="#fff" />
+        ))}
+      </svg>
+    );
+  }
+
+  if (c === "US") {
+    return (
+      <svg {...common}>
+        {Array.from({ length: 13 }).map((_, i) => (
+          <rect key={i} y={(20 / 13) * i} width="32" height={20 / 13} fill={i % 2 === 0 ? "#B22234" : "#fff"} />
+        ))}
+        <rect width="13" height="10.8" fill="#3C3B6E" />
+        {Array.from({ length: 12 }).map((_, i) => (
+          <circle key={i} cx={1.5 + (i % 4) * 3} cy={1.5 + Math.floor(i / 4) * 3} r="0.45" fill="#fff" />
+        ))}
+      </svg>
+    );
+  }
+
+  // Generic inline-SVG fallback so TikTok still receives SVG markup, not an image.
+  return (
+    <svg {...common}>
+      <rect width="32" height="20" fill="#111827" />
+      <rect x="1" y="1" width="30" height="18" fill="none" stroke="#fff" strokeOpacity="0.5" />
+      <text x="16" y="13" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff">
+        {c}
+      </text>
+    </svg>
+  );
+}
+
+function InfoBox({
   label,
   value,
 }: {
@@ -2280,210 +483,81 @@ function StatBox({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-center">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+    <div className="border border-black/20 bg-white px-3 py-3">
+      <p className="truncate text-[8px] font-black uppercase tracking-wider text-neutral-600">
         {label}
       </p>
-
-      <p className="mt-1 text-lg font-black capitalize text-white">
+      <p className="mt-0.5 truncate text-[13px] font-black uppercase text-black">
         {value}
       </p>
     </div>
   );
 }
 
-function SquadCard({
-  squad,
-  disabled,
-  isSaving,
-  onPlacementChange,
-  onNameChange,
-  onKillsChange,
-  onToggleAlive,
+function StandingRow({
+  standing,
+  rank,
 }: {
-  squad: LiveSquad;
-  disabled: boolean;
-  isSaving: boolean;
-  onPlacementChange: (value: string) => void;
-  onNameChange: (
-    playerIndex: number,
-    value: string,
-  ) => void;
-  onKillsChange: (
-    playerIndex: number,
-    value: number,
-  ) => void;
-  onToggleAlive: (playerIndex: number) => void;
+  standing: Standing;
+  rank: number;
 }) {
-  return (
-    <article
-      className={`overflow-hidden rounded-xl border bg-slate-900 shadow-lg ${
-        squad.isEliminated
-          ? "border-red-500/30 opacity-60"
-          : "border-white/10"
-      }`}
-    >
-      <div className="flex items-center gap-2 border-b border-white/10 bg-black/20 p-3">
-        <span className="shrink-0 rounded-md bg-violet-600 px-2 py-1 text-xs font-black">
-          #{squad.slot}
-        </span>
+  const rankStyle =
+    rank === 1
+      ? "bg-yellow-400 text-yellow-950 shadow-[0_0_18px_rgba(250,204,21,0.55)]"
+      : rank === 2
+        ? "bg-slate-200 text-black"
+        : rank === 3
+          ? " text-white"
+          : " text-white";
 
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
-          {squad.logoUrl ? (
+  return (
+    <div
+      className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+    >
+      <div
+        className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
+      >
+        {rank}
+      </div>
+
+      <div className="flex h-10 w-[88px] items-center gap-2">
+        {standing.countryCode ? (
+          <div className="flex h-10 w-8 shrink-0 items-center justify-center">
+            <CountryFlagSvg
+              code={standing.countryCode}
+              label={standing.countryName || standing.countryCode}
+            />
+          </div>
+        ) : (
+          <div className="h-10 w-8 shrink-0" />
+        )}
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border border-white bg-white">
+          {standing.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={squad.logoUrl}
-              alt={`${squad.squadName} logo`}
+              src={standing.logoUrl}
+              alt=""
               className="h-full w-full object-contain p-1"
             />
           ) : (
-            <span className="text-[7px] font-bold text-slate-500">
+            <span className="text-[6px] font-black text-black">
               LOGO
             </span>
           )}
         </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-black">
-            {squad.squadName}
-          </p>
-
-          <p
-            className={`text-[10px] font-bold ${
-              squad.isEliminated
-                ? "text-red-400"
-                : "text-green-400"
-            }`}
-          >
-            {squad.isEliminated
-              ? "Eliminated"
-              : `${squad.alivePlayers} Alive`}
-          </p>
-        </div>
-
-        <label className="w-16 shrink-0">
-          <span className="mb-1 block text-center text-[8px] font-bold uppercase text-slate-500">
-            Place
-          </span>
-
-          <input
-            type="number"
-            min={1}
-            value={squad.placement ?? ""}
-            disabled={disabled}
-            onChange={(event) =>
-              onPlacementChange(event.target.value)
-            }
-            className="h-8 w-full rounded-md border border-white/10 bg-slate-950 px-1 text-center text-sm font-black outline-none focus:border-violet-400 disabled:opacity-50"
-            placeholder="-"
-          />
-        </label>
       </div>
 
-      <div className="space-y-1.5 p-3">
-        {squad.players.map(
-          (player, playerIndex) => (
-            <div
-              key={`${squad.squadId}-${playerIndex}`}
-              className="grid grid-cols-[minmax(0,1fr)_52px_64px] items-center gap-2"
-            >
-              <input
-                type="text"
-                value={player.name}
-                disabled={disabled}
-                onChange={(event) =>
-                  onNameChange(playerIndex, event.target.value)
-                }
-                className="h-7 min-w-0 rounded-md border border-white/10 bg-slate-950 px-2 text-xs font-medium outline-none focus:border-violet-400 disabled:opacity-50"
-                aria-label={`Player ${playerIndex + 1} name`}
-              />
-
-              <input
-                type="number"
-                min={0}
-                value={player.kills}
-                disabled={disabled}
-                onChange={(event) =>
-                  onKillsChange(
-                    playerIndex,
-                    Number(event.target.value),
-                  )
-                }
-                className="h-7 w-full rounded-md border border-white/10 bg-slate-950 px-1 text-center text-xs font-black outline-none focus:border-violet-400 disabled:opacity-50"
-              />
-
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() =>
-                  onToggleAlive(playerIndex)
-                }
-                className={`h-7 rounded-md border px-1 text-[10px] font-black ${
-                  player.isAlive
-                    ? "border-green-500/40 bg-green-500/10 text-green-300"
-                    : "border-red-500/40 bg-red-500/10 text-red-300"
-                } disabled:opacity-50`}
-              >
-                {player.isAlive ? "Alive" : "Dead"}
-              </button>
-            </div>
-          ),
-        )}
-
-        {isSaving && (
-          <p className="pt-1 text-right text-[9px] font-bold text-yellow-300">
-            Saving...
-          </p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-4 gap-px border-t border-white/10 bg-white/10">
-        <CompactScore
-          label="Kills"
-          value={squad.totalKills}
-        />
-
-        <CompactScore
-          label="Kill Pts"
-          value={squad.killPoints}
-        />
-
-        <CompactScore
-          label="Place Pts"
-          value={squad.placementPoints}
-        />
-
-        <CompactScore
-          label="Total"
-          value={squad.matchPoints}
-          highlight
-        />
-      </div>
-    </article>
-  );
-}
-
-function CompactScore({
-  label,
-  value,
-  highlight = false,
-}: {
-  label: string;
-  value: number;
-  highlight?: boolean;
-}) {
-  return (
-    <div className="bg-slate-900 px-1 py-2 text-center">
-      <p className="text-[7px] font-bold uppercase tracking-wide text-slate-500">
-        {label}
+      <p className="truncate text-[14px] font-black uppercase">
+        {standing.squadName}
       </p>
 
-      <p
-        className={`mt-0.5 text-base font-black ${
-          highlight ? "text-violet-400" : ""
-        }`}
-      >
-        {value}
+      <p className="text-center text-base font-black text-white">
+        {standing.totalKills}
+      </p>
+
+      <p className="text-center text-lg font-black text-white">
+        {standing.totalPoints}
       </p>
     </div>
   );
