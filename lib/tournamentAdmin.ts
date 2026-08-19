@@ -94,6 +94,22 @@ export async function loadActiveMatchesWithResults() {
   );
 }
 
+
+export function getPlacementPoints(placement: number) {
+  if (placement === 1) return 10;
+  if (placement === 2) return 6;
+  if (placement === 3) return 5;
+  if (placement === 4) return 4;
+  if (placement === 5) return 3;
+  if (placement === 6) return 2;
+  if (placement === 7 || placement === 8) return 1;
+  return 0;
+}
+
+export function calculateMatchPoints(placement: number, kills: number) {
+  return getPlacementPoints(placement) + kills;
+}
+
 export async function rebuildActiveStandings() {
   const matches = await loadActiveMatchesWithResults();
   const totals: Record<string, StandingTotals> = {};
@@ -129,8 +145,10 @@ export async function rebuildActiveStandings() {
       standing.matchesPlayed += 1;
       standing.chickenDinners += Number(result.placement) === 1 ? 1 : 0;
       standing.totalKills += Number(result.totalKills) || 0;
-      standing.placementPoints += Number(result.placementPoints) || 0;
-      standing.totalPoints += Number(result.totalPoints) || 0;
+      const placement = Number(result.placement) || 0;
+      const kills = Number(result.totalKills) || 0;
+      standing.placementPoints += getPlacementPoints(placement);
+      standing.totalPoints += calculateMatchPoints(placement, kills);
     }
   }
 
@@ -399,8 +417,10 @@ export async function rebuildArchivedStandings(archiveId: string) {
       standing.matchesPlayed += 1;
       standing.chickenDinners += Number(data.placement) === 1 ? 1 : 0;
       standing.totalKills += Number(data.totalKills) || 0;
-      standing.placementPoints += Number(data.placementPoints) || 0;
-      standing.totalPoints += Number(data.totalPoints) || 0;
+      const placement = Number(data.placement) || 0;
+      const kills = Number(data.totalKills) || 0;
+      standing.placementPoints += getPlacementPoints(placement);
+      standing.totalPoints += calculateMatchPoints(placement, kills);
     });
   }
 

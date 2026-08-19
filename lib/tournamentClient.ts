@@ -99,6 +99,22 @@ export const defaultTournamentSettings: TournamentSettings = {
   killPoints: 1,
 };
 
+
+export function getPlacementPoints(placement: number) {
+  if (placement === 1) return 10;
+  if (placement === 2) return 6;
+  if (placement === 3) return 5;
+  if (placement === 4) return 4;
+  if (placement === 5) return 3;
+  if (placement === 6) return 2;
+  if (placement === 7 || placement === 8) return 1;
+  return 0;
+}
+
+export function calculateMatchPoints(placement: number, kills: number) {
+  return getPlacementPoints(placement) + kills;
+}
+
 export function rankTournamentStandings(
   standings: TournamentStanding[],
 ) {
@@ -205,10 +221,10 @@ export async function loadTournamentStats(): Promise<
       current.chickenDinners +=
         placement === 1 ? 1 : 0;
       current.totalKills += kills;
-      current.placementPoints +=
-        Number(data.placementPoints) || 0;
-      current.totalPoints +=
-        Number(data.totalPoints) || 0;
+      const matchPlacementPoints = getPlacementPoints(placement);
+      const matchTotalPoints = calculateMatchPoints(placement, kills);
+      current.placementPoints += matchPlacementPoints;
+      current.totalPoints += matchTotalPoints;
       current.totalPlacement += placement;
 
       current.bestPlacement =
@@ -296,7 +312,7 @@ export async function loadTournamentStats(): Promise<
         current.currentMatchPlacementPoints;
 
       current.totalPoints +=
-        current.currentMatchPoints;
+        current.currentMatchKills + current.currentMatchPlacementPoints;
     }
 
     totals.set(squadId, current);
