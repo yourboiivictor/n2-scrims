@@ -147,6 +147,7 @@ export async function loadTournamentStats(): Promise<
   );
 
   const totals = new Map<string, TournamentStanding>();
+  const finalizedMatchKeys = new Set<string>();
 
   for (const matchDocument of matchesSnapshot.docs) {
     const resultsSnapshot = await getDocs(
@@ -168,6 +169,15 @@ export async function loadTournamentStats(): Promise<
 
       const placement = Number(data.placement) || 0;
       const kills = Number(data.totalKills) || 0;
+      const resultMatchNumber =
+        Number(data.matchNumber) ||
+        Number(matchDocument.data().matchNumber) ||
+        Number(matchDocument.id.replace(/\D+/g, "")) ||
+        0;
+
+      if (resultMatchNumber > 0) {
+        finalizedMatchKeys.add(`${squadId}:${resultMatchNumber}`);
+      }
 
       const current = totals.get(squadId) || {
         squadId,
@@ -304,13 +314,17 @@ export async function loadTournamentStats(): Promise<
 
     current.isLive = data.isLive === true;
 
-    if (current.isLive) {
-      current.totalKills +=
-        current.currentMatchKills;
+    const currentMatchNumber = Number(data.currentMatchNumber) || 0;
+    const currentMatchAlreadyFinalized =
+      currentMatchNumber > 0 &&
+      finalizedMatchKeys.has(`${squadId}:${currentMatchNumber}`);
 
-      current.placementPoints +=
-        current.currentMatchPlacementPoints;
-
+    // Only add live points when that exact match has NOT already been
+    // included in the finalized /matches results above. This prevents
+    // the same match from being counted twice (for example 14 becoming 28).
+    if (current.isLive && !currentMatchAlreadyFinalized) {
+      current.totalKills += current.currentMatchKills;
+      current.placementPoints += current.currentMatchPlacementPoints;
       current.totalPoints +=
         current.currentMatchKills + current.currentMatchPlacementPoints;
     }
