@@ -1,81 +1,102 @@
 "use client";
 
-import { collection, getDocs } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+} from "firebase/firestore";
 import { useCallback, useEffect, useState } from "react";
 import { db } from "@/firebase";
 
-type PlayerKillLeader = {
-  playerKey: string;
-  playerName: string;
+type ChickenDinnerRow = {
+  teamKey: string;
   squadName: string;
   logoUrl: string;
-  totalKills: number;
-  gamesPlayed: number;
+  chickenDinners: number;
+  winningPoints: number;
+  winningKills: number;
 };
 
-function normalizePlayerName(name: string) {
+function normalizeTeamName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function addPlayersFromResult(
-  totals: Record<string, PlayerKillLeader>,
+function addChickenDinner(
+  totals: Record<string, ChickenDinnerRow>,
   data: Record<string, unknown>,
 ) {
+  if (Number(data.placement) !== 1) return;
+
   const squadName =
     typeof data.squadName === "string" && data.squadName.trim()
       ? data.squadName.trim()
-      : "Unknown Squad";
+      : "Unnamed Squad";
 
-  const logoUrl =
-    typeof data.logoUrl === "string" ? data.logoUrl : "";
+  const teamKey = normalizeTeamName(squadName);
 
-  const players = Array.isArray(data.players) ? data.players : [];
+  if (!totals[teamKey]) {
+    totals[teamKey] = {
+      teamKey,
+      squadName,
+      logoUrl:
+        typeof data.logoUrl === "string" ? data.logoUrl : "",
+      chickenDinners: 0,
+      winningPoints: 0,
+      winningKills: 0,
+    };
+  }
 
-  players.forEach((player) => {
-    if (!player || typeof player !== "object") return;
+  const row = totals[teamKey];
 
-    const value = player as Record<string, unknown>;
-    const playerName =
-      typeof value.name === "string" ? value.name.trim() : "";
+  if (typeof data.logoUrl === "string" && data.logoUrl) {
+    row.logoUrl = data.logoUrl;
+  }
 
-    if (!playerName) return;
-
-    const playerKey = normalizePlayerName(playerName);
-    const kills = Number(value.kills) || 0;
-
-    if (!totals[playerKey]) {
-      totals[playerKey] = {
-        playerKey,
-        playerName,
-        squadName,
-        logoUrl,
-        totalKills: 0,
-        gamesPlayed: 0,
-      };
-    }
-
-    const row = totals[playerKey];
-    row.playerName = playerName;
-    row.squadName = squadName;
-    if (logoUrl) row.logoUrl = logoUrl;
-    row.totalKills += kills;
-    row.gamesPlayed += 1;
-  });
+  row.squadName = squadName;
+  row.chickenDinners += 1;
+  row.winningPoints += Number(data.totalPoints) || 0;
+  row.winningKills += Number(data.totalKills) || 0;
 }
 
-async function loadCurrentPlayerKills() {
-  const totals: Record<string, PlayerKillLeader> = {};
+async function loadNewestArchivedChickenDinners() {
+  const totals: Record<string, ChickenDinnerRow> = {};
 
-  // Current + history matches.
-  const currentMatches = await getDocs(collection(db, "matches"));
+  const newestArchiveSnapshot = await getDocs(
+    query(
+      collection(db, "tournamentArchives"),
+      orderBy("archivedAt", "desc"),
+      limit(1),
+    ),
+  );
 
-  for (const matchDocument of currentMatches.docs) {
+  const newestArchiveDocument = newestArchiveSnapshot.docs[0];
+  if (!newestArchiveDocument) return [];
+
+  const archivedMatches = await getDocs(
+    collection(
+      db,
+      "tournamentArchives",
+      newestArchiveDocument.id,
+      "matches",
+    ),
+  );
+
+  for (const matchDocument of archivedMatches.docs) {
     const results = await getDocs(
-      collection(db, "matches", matchDocument.id, "results"),
+      collection(
+        db,
+        "tournamentArchives",
+        newestArchiveDocument.id,
+        "matches",
+        matchDocument.id,
+        "results",
+      ),
     );
 
     results.docs.forEach((resultDocument) => {
-      addPlayersFromResult(
+      addChickenDinner(
         totals,
         resultDocument.data() as Record<string, unknown>,
       );
@@ -83,91 +104,117 @@ async function loadCurrentPlayerKills() {
   }
 
   return Object.values(totals).sort((a, b) => {
-    if (b.totalKills !== a.totalKills) {
-      return b.totalKills - a.totalKills;
+    if (b.chickenDinners !== a.chickenDinners) {
+      return b.chickenDinners - a.chickenDinners;
     }
 
-    return a.playerName.localeCompare(b.playerName);
+    if (b.winningPoints !== a.winningPoints) {
+      return b.winningPoints - a.winningPoints;
+    }
+
+    if (b.winningKills !== a.winningKills) {
+      return b.winningKills - a.winningKills;
+    }
+
+    return a.squadName.localeCompare(b.squadName);
   });
 }
 
-export default function KillLeaderOverlay() {
-  const [leaders, setLeaders] = useState<PlayerKillLeader[]>([]);
+export default function TopChickenDinnersOverlayPage() {
+  const [rows, setRows] = useState<ChickenDinnerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const players = await loadCurrentPlayerKills();
-      setLeaders(players.slice(0, 10));
+      setErrorMessage("");
+      const loadedRows = await loadNewestArchivedChickenDinners();
+      setRows(loadedRows);
     } catch (error) {
-      console.error("Unable to load player kill leaders:", error);
+      console.error("Unable to load New Update Chicken Dinner stats:", error);
+      setErrorMessage("Unable to load New Update Chicken Dinner stats.");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const initial = window.setTimeout(() => void refresh(), 0);
-    const timer = window.setInterval(() => void refresh(), 5000);
+    const initialTimer = window.setTimeout(() => {
+      void refresh();
+    }, 0);
+
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 5000);
 
     return () => {
-      window.clearTimeout(initial);
+      window.clearTimeout(initialTimer);
       window.clearInterval(timer);
     };
   }, [refresh]);
 
-  if (leaders.length === 0) return null;
-
   return (
     <main className="min-h-screen bg-transparent p-4 text-white">
-      <section className="w-[620px] overflow-hidden rounded-2xl border border-white/40 bg-black/60 shadow-2xl">
-        <div className="border-b border-white/25 bg-white px-5 py-3 text-black">
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-black/60">
-            N² Scrims
-          </p>
-          <h1 className="mt-1 text-xl font-black uppercase">
-            Top 10 Player Kill Leaders
-          </h1>
+      <section className="w-[640px] overflow-hidden rounded-2xl border border-white/30 bg-black/90 shadow-2xl">
+        <div className="border-b border-white/25 bg-white px-5 py-3 text-xl font-black text-black">
+          TOP CHICKEN DINNERS
         </div>
 
-        {leaders.map((leader, index) => (
-          <div
-            key={leader.playerKey}
-            className="grid grid-cols-[50px_52px_minmax(0,1fr)_90px] items-center gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
-          >
-            <div className="text-xl font-black">
-              #{index + 1}
-            </div>
-
-            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-white bg-white">
-              {leader.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={leader.logoUrl}
-                  alt=""
-                  className="h-full w-full object-contain p-1"
-                />
-              ) : (
-                <span className="text-xs font-black text-black">N²</span>
-              )}
-            </div>
-
-            <div className="min-w-0">
-              <p className="truncate text-base font-black">
-                {leader.playerName}
-              </p>
-              <p className="truncate text-xs font-bold uppercase text-white/60">
-                {leader.squadName} · {leader.gamesPlayed} games
-              </p>
-            </div>
-
-            <div className="text-right">
-              <p className="text-2xl font-black">
-                {leader.totalKills}
-              </p>
-              <p className="text-[10px] font-black uppercase tracking-wider text-white/60">
-                Kills
-              </p>
-            </div>
+        {loading ? (
+          <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
+            Loading Chicken Dinners...
           </div>
-        ))}
+        ) : errorMessage ? (
+          <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
+            {errorMessage}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
+            No Chicken Dinners recorded in the New Update.
+          </div>
+        ) : (
+          rows.map((row, index) => (
+            <div
+              key={row.teamKey}
+              className="grid grid-cols-[55px_55px_1fr_100px] items-center gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
+            >
+              <div className="text-xl font-black text-white">
+                #{index + 1}
+              </div>
+
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-white/30 bg-white">
+                {row.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={row.logoUrl}
+                    alt=""
+                    className="h-full w-full object-contain p-1"
+                  />
+                ) : null}
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate font-black">
+                  {row.squadName}
+                </p>
+
+                <p className="text-xs text-white/60">
+                  {row.winningKills} kills · {row.winningPoints} winning pts
+                </p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-[10px] font-black uppercase tracking-wider text-white/45">
+                  Dinners
+                </p>
+
+                <p className="text-2xl font-black text-white">
+                  {row.chickenDinners}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
       </section>
     </main>
   );
