@@ -57,7 +57,7 @@ function addChickenDinner(
   row.winningKills += Number(data.totalKills) || 0;
 }
 
-async function loadChickenDinnerHistory() {
+async function loadCurrentChickenDinners() {
   const totals: Record<string, ChickenDinnerRow> = {};
 
   // CURRENT / HISTORY MATCHES
@@ -74,42 +74,6 @@ async function loadChickenDinnerHistory() {
         resultDocument.data() as Record<string, unknown>,
       );
     });
-  }
-
-  // ARCHIVED TOURNAMENT MATCHES
-  const archives = await getDocs(
-    collection(db, "tournamentArchives"),
-  );
-
-  for (const archiveDocument of archives.docs) {
-    const archivedMatches = await getDocs(
-      collection(
-        db,
-        "tournamentArchives",
-        archiveDocument.id,
-        "matches",
-      ),
-    );
-
-    for (const matchDocument of archivedMatches.docs) {
-      const results = await getDocs(
-        collection(
-          db,
-          "tournamentArchives",
-          archiveDocument.id,
-          "matches",
-          matchDocument.id,
-          "results",
-        ),
-      );
-
-      results.docs.forEach((resultDocument) => {
-        addChickenDinner(
-          totals,
-          resultDocument.data() as Record<string, unknown>,
-        );
-      });
-    }
   }
 
   return Object.values(totals).sort((a, b) => {
@@ -137,11 +101,11 @@ export default function TopChickenDinnersOverlayPage() {
   const refresh = useCallback(async () => {
     try {
       setErrorMessage("");
-      const loadedRows = await loadChickenDinnerHistory();
+      const loadedRows = await loadCurrentChickenDinners();
       setRows(loadedRows);
     } catch (error) {
-      console.error("Unable to load Chicken Dinner history:", error);
-      setErrorMessage("Unable to load Chicken Dinner history.");
+      console.error("Unable to load current Chicken Dinner stats:", error);
+      setErrorMessage("Unable to load current Chicken Dinner stats.");
     } finally {
       setLoading(false);
     }
@@ -179,7 +143,7 @@ export default function TopChickenDinnersOverlayPage() {
           </div>
         ) : rows.length === 0 ? (
           <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
-            No Chicken Dinners recorded yet.
+            No No Chicken Dinners recorded in the new update yet.
           </div>
         ) : (
           rows.map((row, index) => (
