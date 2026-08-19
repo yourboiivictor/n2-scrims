@@ -10,58 +10,67 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { db } from "@/firebase";
 
-type ChickenDinnerRow = {
-  teamKey: string;
+type PlayerKillLeader = {
+  playerKey: string;
+  playerName: string;
   squadName: string;
   logoUrl: string;
-  chickenDinners: number;
-  winningPoints: number;
-  winningKills: number;
+  totalKills: number;
+  gamesPlayed: number;
 };
 
-function normalizeTeamName(name: string) {
+function normalizePlayerName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function addChickenDinner(
-  totals: Record<string, ChickenDinnerRow>,
+function addPlayersFromResult(
+  totals: Record<string, PlayerKillLeader>,
   data: Record<string, unknown>,
 ) {
-  if (Number(data.placement) !== 1) return;
-
   const squadName =
     typeof data.squadName === "string" && data.squadName.trim()
       ? data.squadName.trim()
-      : "Unnamed Squad";
+      : "Unknown Squad";
 
-  const teamKey = normalizeTeamName(squadName);
+  const logoUrl =
+    typeof data.logoUrl === "string" ? data.logoUrl : "";
 
-  if (!totals[teamKey]) {
-    totals[teamKey] = {
-      teamKey,
-      squadName,
-      logoUrl:
-        typeof data.logoUrl === "string" ? data.logoUrl : "",
-      chickenDinners: 0,
-      winningPoints: 0,
-      winningKills: 0,
-    };
-  }
+  const players = Array.isArray(data.players) ? data.players : [];
 
-  const row = totals[teamKey];
+  players.forEach((player) => {
+    if (!player || typeof player !== "object") return;
 
-  if (typeof data.logoUrl === "string" && data.logoUrl) {
-    row.logoUrl = data.logoUrl;
-  }
+    const value = player as Record<string, unknown>;
+    const playerName =
+      typeof value.name === "string" ? value.name.trim() : "";
 
-  row.squadName = squadName;
-  row.chickenDinners += 1;
-  row.winningPoints += Number(data.totalPoints) || 0;
-  row.winningKills += Number(data.totalKills) || 0;
+    if (!playerName) return;
+
+    const playerKey = normalizePlayerName(playerName);
+    const kills = Number(value.kills) || 0;
+
+    if (!totals[playerKey]) {
+      totals[playerKey] = {
+        playerKey,
+        playerName,
+        squadName,
+        logoUrl,
+        totalKills: 0,
+        gamesPlayed: 0,
+      };
+    }
+
+    const row = totals[playerKey];
+    row.playerName = playerName;
+    row.squadName = squadName;
+    if (logoUrl) row.logoUrl = logoUrl;
+    row.totalKills += kills;
+    row.gamesPlayed += 1;
+  });
 }
 
-async function loadNewestArchivedChickenDinners() {
-  const totals: Record<string, ChickenDinnerRow> = {};
+async function loadNewestArchivedPlayerKills() {
+  const totals: Record<string, PlayerKillLeader> = {};
 
   const newestArchiveSnapshot = await getDocs(
     query(
@@ -96,7 +105,7 @@ async function loadNewestArchivedChickenDinners() {
     );
 
     results.docs.forEach((resultDocument) => {
-      addChickenDinner(
+      addPlayersFromResult(
         totals,
         resultDocument.data() as Record<string, unknown>,
       );
@@ -104,112 +113,111 @@ async function loadNewestArchivedChickenDinners() {
   }
 
   return Object.values(totals).sort((a, b) => {
-    if (b.chickenDinners !== a.chickenDinners) {
-      return b.chickenDinners - a.chickenDinners;
+    if (b.totalKills !== a.totalKills) {
+      return b.totalKills - a.totalKills;
     }
 
-    if (b.winningPoints !== a.winningPoints) {
-      return b.winningPoints - a.winningPoints;
-    }
-
-    if (b.winningKills !== a.winningKills) {
-      return b.winningKills - a.winningKills;
-    }
-
-    return a.squadName.localeCompare(b.squadName);
+    return a.playerName.localeCompare(b.playerName);
   });
 }
 
-export default function TopChickenDinnersOverlayPage() {
-  const [rows, setRows] = useState<ChickenDinnerRow[]>([]);
+export default function KillLeaderOverlay() {
+  const [leaders, setLeaders] = useState<PlayerKillLeader[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
   const refresh = useCallback(async () => {
     try {
       setErrorMessage("");
-      const loadedRows = await loadNewestArchivedChickenDinners();
-      setRows(loadedRows);
+      const players = await loadNewestArchivedPlayerKills();
+      setLeaders(players.slice(0, 10));
     } catch (error) {
-      console.error("Unable to load New Update Chicken Dinner stats:", error);
-      setErrorMessage("Unable to load New Update Chicken Dinner stats.");
+      console.error("Unable to load New Update player kill leaders:", error);
+      setErrorMessage("Unable to load New Update player kill leaders.");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const initialTimer = window.setTimeout(() => {
-      void refresh();
-    }, 0);
-
-    const timer = window.setInterval(() => {
-      void refresh();
-    }, 5000);
+    const initial = window.setTimeout(() => void refresh(), 0);
+    const timer = window.setInterval(() => void refresh(), 5000);
 
     return () => {
-      window.clearTimeout(initialTimer);
+      window.clearTimeout(initial);
       window.clearInterval(timer);
     };
   }, [refresh]);
 
   return (
     <main className="min-h-screen bg-transparent p-4 text-white">
-      <section className="w-[640px] overflow-hidden rounded-2xl border border-white/30 bg-black/90 shadow-2xl">
-        <div className="border-b border-white/25 bg-white px-5 py-3 text-xl font-black text-black">
-          TOP CHICKEN DINNERS
+      <section className="w-[620px] overflow-hidden rounded-2xl border border-white/40 bg-black/60 shadow-2xl">
+        <div className="border-b border-white/25 bg-white px-5 py-3 text-black">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-black/60">
+            N² Scrims
+          </p>
+
+          <h1 className="mt-1 text-xl font-black uppercase">
+            Top 10 Player Kill Leaders
+          </h1>
+
+          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-black/50">
+            New Update
+          </p>
         </div>
 
         {loading ? (
           <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
-            Loading Chicken Dinners...
+            Loading kill leaders...
           </div>
         ) : errorMessage ? (
           <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
             {errorMessage}
           </div>
-        ) : rows.length === 0 ? (
+        ) : leaders.length === 0 ? (
           <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
-            No Chicken Dinners recorded in the New Update.
+            No player kills recorded in the New Update.
           </div>
         ) : (
-          rows.map((row, index) => (
+          leaders.map((leader, index) => (
             <div
-              key={row.teamKey}
-              className="grid grid-cols-[55px_55px_1fr_100px] items-center gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
+              key={leader.playerKey}
+              className="grid grid-cols-[50px_52px_minmax(0,1fr)_90px] items-center gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
             >
-              <div className="text-xl font-black text-white">
+              <div className="text-xl font-black">
                 #{index + 1}
               </div>
 
-              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-white/30 bg-white">
-                {row.logoUrl ? (
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-white bg-white">
+                {leader.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={row.logoUrl}
+                    src={leader.logoUrl}
                     alt=""
                     className="h-full w-full object-contain p-1"
                   />
-                ) : null}
+                ) : (
+                  <span className="text-xs font-black text-black">N²</span>
+                )}
               </div>
 
               <div className="min-w-0">
-                <p className="truncate font-black">
-                  {row.squadName}
+                <p className="truncate text-base font-black">
+                  {leader.playerName}
                 </p>
 
-                <p className="text-xs text-white/60">
-                  {row.winningKills} kills · {row.winningPoints} winning pts
+                <p className="truncate text-xs font-bold uppercase text-white/60">
+                  {leader.squadName} · {leader.gamesPlayed} games
                 </p>
               </div>
 
               <div className="text-right">
-                <p className="text-[10px] font-black uppercase tracking-wider text-white/45">
-                  Dinners
+                <p className="text-2xl font-black">
+                  {leader.totalKills}
                 </p>
 
-                <p className="text-2xl font-black text-white">
-                  {row.chickenDinners}
+                <p className="text-[10px] font-black uppercase tracking-wider text-white/60">
+                  Kills
                 </p>
               </div>
             </div>
