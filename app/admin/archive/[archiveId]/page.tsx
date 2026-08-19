@@ -2,108 +2,83 @@
 
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
-  getDocs,
+  onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   writeBatch,
 } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/firebase";
+import { rebuildArchivedStandings } from "@/lib/tournamentAdmin";
 
 const ADMIN_EMAIL = "victornicetry2@gmail.com";
 
-type Standing = {
+type PlayerResult = {
+  name: string;
+  kills: number;
+  isAlive?: boolean;
+};
+
+type MatchResult = {
   squadId: string;
-  rank: number;
   squadName: string;
-  logoUrl: string;
-  matchesPlayed: number;
-  chickenDinners: number;
+  logoUrl?: string;
+  slot: number;
+  players: PlayerResult[];
+  playerNames?: string[];
+  placement: number | null;
   totalKills: number;
+  killPoints: number;
   placementPoints: number;
   totalPoints: number;
 };
 
-type ArchivedMatch = {
-  id: string;
+type MatchDetails = {
   matchNumber: number;
   status: string;
   squadCount: number;
 };
 
-async function deleteDocumentsInBatches(
-  documents: Array<{ ref: ReturnType<typeof doc> }>,
-) {
-  const batchSize = 450;
-
-  for (let index = 0; index < documents.length; index += batchSize) {
-    const batch = writeBatch(db);
-
-    documents
-      .slice(index, index + batchSize)
-      .forEach((documentSnapshot) => {
-        batch.delete(documentSnapshot.ref);
-      });
-
-    await batch.commit();
-  }
+function getRankedResults(results: MatchResult[]) {
+  return [...results].sort((a, b) => {
+    if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+    if (a.placement !== b.placement) {
+      return (
+        (a.placement ?? Number.MAX_SAFE_INTEGER) -
+        (b.placement ?? Number.MAX_SAFE_INTEGER)
+      );
+    }
+    if (b.totalKills !== a.totalKills) return b.totalKills - a.totalKills;
+    return a.squadName.localeCompare(b.squadName);
+  });
 }
 
-async function permanentlyDeleteArchive(archiveId: string) {
-  const standingsSnapshot = await getDocs(
-    collection(db, "tournamentArchives", archiveId, "standings"),
-  );
-
-  await deleteDocumentsInBatches(standingsSnapshot.docs);
-
-  const matchesSnapshot = await getDocs(
-    collection(db, "tournamentArchives", archiveId, "matches"),
-  );
-
-  for (const matchDocument of matchesSnapshot.docs) {
-    const resultsSnapshot = await getDocs(
-      collection(
-        db,
-        "tournamentArchives",
-        archiveId,
-        "matches",
-        matchDocument.id,
-        "results",
-      ),
-    );
-
-    await deleteDocumentsInBatches(resultsSnapshot.docs);
-  }
-
-  await deleteDocumentsInBatches(matchesSnapshot.docs);
-
-  await deleteDoc(doc(db, "tournamentArchives", archiveId));
-}
-
-export default function ArchiveDetailsPage() {
-  const params = useParams<{ archiveId: string }>();
-  const router = useRouter();
+export default function ArchivedMatchResultsPage() {
+  const params = useParams<{ archiveId: string; matchId: string }>();
   const archiveId = params.archiveId;
+  const matchId = params.matchId;
 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [title, setTitle] = useState("Tournament Archive");
-  const [season, setSeason] = useState("");
-  const [champion, setChampion] = useState("No champion");
-  const [standings, setStandings] = useState<Standing[]>([]);
-  const [matches, setMatches] = useState<ArchivedMatch[]>([]);
-  const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [matchDetails, setMatchDetails] = useState<MatchDetails | null>(null);
+  const [results, setResults] = useState<MatchResult[]>([]);
   const [message, setMessage] = useState("");
 
   const isAdmin =
     user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  const rankedResults = useMemo(
+    () => getRankedResults(results),
+    [results],
+  );
 
   useEffect(
     () =>
@@ -115,138 +90,274 @@ export default function ArchiveDetailsPage() {
   );
 
   useEffect(() => {
-    if (!isAdmin || !archiveId) {
+    if (!isAdmin || !archiveId || !matchId) {
       setLoading(false);
       return;
     }
 
+    let unsubscribeResults: (() => void) | undefined;
+
     void (async () => {
       try {
         setLoading(true);
-        setMessage("");
 
-        const archiveSnapshot = await getDoc(
-          doc(db, "tournamentArchives", archiveId),
+        const matchSnapshot = await getDoc(
+          doc(
+            db,
+            "tournamentArchives",
+            archiveId,
+            "matches",
+            matchId,
+          ),
         );
 
-        if (!archiveSnapshot.exists()) {
-          setMessage("This tournament archive could not be found.");
+        if (!matchSnapshot.exists()) {
+          setMessage("Archived match not found.");
           setLoading(false);
           return;
         }
 
-        const data = archiveSnapshot.data();
+        const matchData = matchSnapshot.data();
+        setMatchDetails({
+          matchNumber:
+            Number(matchData.matchNumber) ||
+            Number(matchId.replace("match-", "")) ||
+            0,
+          status:
+            typeof matchData.status === "string"
+              ? matchData.status
+              : "finalized",
+          squadCount: Number(matchData.squadCount) || 0,
+        });
 
-        setTitle(
-          typeof data.tournamentName === "string"
-            ? data.tournamentName
-            : "Tournament Archive",
-        );
-
-        setSeason(
-          typeof data.season === "string"
-            ? data.season
-            : "",
-        );
-
-        setChampion(
-          typeof data.championName === "string"
-            ? data.championName
-            : "No champion",
-        );
-
-        const [standingsSnapshot, matchesSnapshot] =
-          await Promise.all([
-            getDocs(
-              query(
-                collection(
-                  db,
-                  "tournamentArchives",
-                  archiveId,
-                  "standings",
-                ),
-                orderBy("rank", "asc"),
-              ),
+        unsubscribeResults = onSnapshot(
+          query(
+            collection(
+              db,
+              "tournamentArchives",
+              archiveId,
+              "matches",
+              matchId,
+              "results",
             ),
-            getDocs(
-              query(
-                collection(
-                  db,
-                  "tournamentArchives",
-                  archiveId,
-                  "matches",
-                ),
-                orderBy("matchNumber", "asc"),
-              ),
-            ),
-          ]);
+            orderBy("slot", "asc"),
+          ),
+          (snapshot) => {
+            setResults(
+              snapshot.docs.map((resultDocument) => {
+                const data = resultDocument.data();
+                const storedPlayers = Array.isArray(data.players)
+                  ? data.players
+                  : [];
+                const fallbackNames = Array.isArray(data.playerNames)
+                  ? data.playerNames
+                  : [];
 
-        setStandings(
-          standingsSnapshot.docs.map((standingDocument) => ({
-            squadId: standingDocument.id,
-            ...(standingDocument.data() as Omit<
-              Standing,
-              "squadId"
-            >),
-          })),
-        );
+                const players: PlayerResult[] = Array.from(
+                  {
+                    length: Math.max(
+                      storedPlayers.length,
+                      fallbackNames.length,
+                      4,
+                    ),
+                  },
+                  (_, index) => {
+                    const storedPlayer = storedPlayers[index];
 
-        setMatches(
-          matchesSnapshot.docs.map((matchDocument) => {
-            const matchData = matchDocument.data();
+                    if (
+                      storedPlayer &&
+                      typeof storedPlayer === "object"
+                    ) {
+                      return {
+                        name:
+                          typeof storedPlayer.name === "string"
+                            ? storedPlayer.name
+                            : fallbackNames[index] ||
+                              `Player ${index + 1}`,
+                        kills: Math.max(
+                          0,
+                          Number(storedPlayer.kills) || 0,
+                        ),
+                        isAlive:
+                          typeof storedPlayer.isAlive === "boolean"
+                            ? storedPlayer.isAlive
+                            : undefined,
+                      };
+                    }
 
-            return {
-              id: matchDocument.id,
-              matchNumber:
-                Number(matchData.matchNumber) || 0,
-              status:
-                typeof matchData.status === "string"
-                  ? matchData.status
-                  : "finalized",
-              squadCount:
-                Number(matchData.squadCount) || 0,
-            };
-          }),
+                    return {
+                      name:
+                        fallbackNames[index] ||
+                        `Player ${index + 1}`,
+                      kills: 0,
+                    };
+                  },
+                );
+
+                return {
+                  squadId: resultDocument.id,
+                  squadName:
+                    typeof data.squadName === "string"
+                      ? data.squadName
+                      : "Unnamed Squad",
+                  logoUrl:
+                    typeof data.logoUrl === "string"
+                      ? data.logoUrl
+                      : "",
+                  slot: Number(data.slot) || 0,
+                  players,
+                  playerNames: fallbackNames,
+                  placement:
+                    Number(data.placement) > 0
+                      ? Number(data.placement)
+                      : null,
+                  totalKills: Number(data.totalKills) || 0,
+                  killPoints: Number(data.killPoints) || 0,
+                  placementPoints:
+                    Number(data.placementPoints) || 0,
+                  totalPoints: Number(data.totalPoints) || 0,
+                };
+              }),
+            );
+            setLoading(false);
+          },
+          (error) => {
+            console.error(error);
+            setMessage("Unable to load archived match results.");
+            setLoading(false);
+          },
         );
       } catch (error) {
-        console.error("Unable to load archive:", error);
-        setMessage("Unable to load this tournament archive.");
-      } finally {
+        console.error(error);
+        setMessage("Unable to load archived match.");
         setLoading(false);
       }
     })();
-  }, [isAdmin, archiveId]);
 
-  async function handleDeleteArchive() {
-    const firstConfirmation = window.confirm(
-      `Permanently delete "${title}"?\n\nThis will delete all archived standings, matches, and match results.\n\nThis action cannot be undone.`,
+    return () => unsubscribeResults?.();
+  }, [isAdmin, archiveId, matchId]);
+
+  function updatePlayerKills(
+    squadId: string,
+    playerIndex: number,
+    value: number,
+  ) {
+    setResults((current) =>
+      current.map((result) => {
+        if (result.squadId !== squadId) return result;
+
+        const players = result.players.map((player, index) =>
+          index === playerIndex
+            ? {
+                ...player,
+                kills: Math.max(0, Number(value) || 0),
+              }
+            : player,
+        );
+
+        const totalKills = players.reduce(
+          (total, player) => total + player.kills,
+          0,
+        );
+
+        // Preserve the original per-kill value when possible.
+        const killValue =
+          result.totalKills > 0
+            ? result.killPoints / result.totalKills
+            : 1;
+        const killPoints = totalKills * killValue;
+
+        return {
+          ...result,
+          players,
+          totalKills,
+          killPoints,
+          totalPoints: killPoints + result.placementPoints,
+        };
+      }),
     );
+  }
 
-    if (!firstConfirmation) return;
+  function updatePlacementPoints(squadId: string, value: number) {
+    setResults((current) =>
+      current.map((result) => {
+        if (result.squadId !== squadId) return result;
+        const placementPoints = Math.max(0, Number(value) || 0);
 
-    const finalConfirmation = window.confirm(
-      `Delete "${title}" forever?\n\nThis is your final warning. This action cannot be undone.`,
+        return {
+          ...result,
+          placementPoints,
+          totalPoints: result.killPoints + placementPoints,
+        };
+      }),
     );
+  }
 
-    if (!finalConfirmation) {
-      setMessage("Archive deletion cancelled.");
+  function updateTotalPoints(squadId: string, value: number) {
+    setResults((current) =>
+      current.map((result) =>
+        result.squadId === squadId
+          ? {
+              ...result,
+              totalPoints: Math.max(0, Number(value) || 0),
+            }
+          : result,
+      ),
+    );
+  }
+
+  async function saveChanges() {
+    if (!isAdmin || saving || results.length === 0) return;
+
+    if (
+      !window.confirm(
+        `Save edits to archived Match ${matchDetails?.matchNumber ?? ""}? Archive standings and champion will be recalculated.`,
+      )
+    ) {
       return;
     }
 
-    setDeleting(true);
+    setSaving(true);
     setMessage("");
 
     try {
-      await permanentlyDeleteArchive(archiveId);
+      const batch = writeBatch(db);
 
-      router.push("/admin/archive");
-      router.refresh();
-    } catch (error) {
-      console.error("Unable to delete archive:", error);
+      results.forEach((result) => {
+        batch.set(
+          doc(
+            db,
+            "tournamentArchives",
+            archiveId,
+            "matches",
+            matchId,
+            "results",
+            result.squadId,
+          ),
+          {
+            players: result.players,
+            playerNames: result.players.map((player) => player.name),
+            totalKills: result.totalKills,
+            killPoints: result.killPoints,
+            placementPoints: result.placementPoints,
+            totalPoints: result.totalPoints,
+            editedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+
+      await batch.commit();
+      await rebuildArchivedStandings(archiveId);
+
       setMessage(
-        "Unable to delete the archive. Check your Firestore rules and try again.",
+        "Archived match saved. Archive standings and champion were recalculated.",
       );
-      setDeleting(false);
+    } catch (error) {
+      console.error(error);
+      setMessage("Unable to save archived match changes.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -270,42 +381,35 @@ export default function ArchiveDetailsPage() {
     <main className="min-h-screen bg-slate-950 px-4 py-5 text-white">
       <div className="mx-auto max-w-[1500px]">
         <header className="rounded-2xl border border-white/10 bg-slate-900 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <Link
+            href={`/admin/archive/${archiveId}`}
+            className="text-sm font-black text-violet-400"
+          >
+            ← Back to Archive
+          </Link>
+
+          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <Link
-                href="/admin/archive"
-                className="text-sm font-black text-violet-400"
-              >
-                ← Tournament Archive
-              </Link>
-
-              <h1 className="mt-3 text-3xl font-black">
-                {title}
+              <h1 className="text-3xl font-black">
+                Archived Match {matchDetails?.matchNumber ?? ""} Results
               </h1>
-
               <p className="mt-1 text-sm text-slate-400">
-                {season ? `Season ${season} · ` : ""}
-                Champion:{" "}
-                <strong className="text-white">
-                  {champion}
-                </strong>
+                Edit individual player kills, placement points, and total points.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => void handleDeleteArchive()}
-              disabled={deleting || loading}
-              className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-black text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => void saveChanges()}
+              disabled={saving || loading || results.length === 0}
+              className="rounded-lg bg-violet-600 px-5 py-3 text-sm font-black disabled:opacity-50"
             >
-              {deleting
-                ? "Deleting Archive..."
-                : "Permanently Delete Archive"}
+              {saving ? "Saving..." : "Save Archive Changes"}
             </button>
           </div>
 
           {message && (
-            <div className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+            <div className="mt-4 rounded-lg border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-sm text-violet-100">
               {message}
             </div>
           )}
@@ -313,93 +417,133 @@ export default function ArchiveDetailsPage() {
 
         {loading ? (
           <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-8 text-center">
-            Loading archive...
+            Loading archived results...
           </div>
         ) : (
-          <>
-            <section className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-slate-900">
-              <div className="min-w-[900px]">
-                <div className="grid grid-cols-[70px_minmax(200px,1fr)_100px_130px_110px_140px_120px] border-b border-white/10 bg-black/30 px-4 py-3 text-[10px] font-black uppercase text-slate-500">
-                  <div>Rank</div>
-                  <div>Squad</div>
-                  <div>Matches</div>
-                  <div>Chicken Dinners</div>
-                  <div>Kills</div>
-                  <div>Placement Pts</div>
-                  <div>Total</div>
+          <section className="mt-4 space-y-3">
+            {rankedResults.map((result, rankIndex) => (
+              <article
+                key={result.squadId}
+                className="rounded-2xl border border-white/10 bg-slate-900 p-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-xl font-black text-violet-400">
+                    #{rankIndex + 1}
+                  </div>
+
+                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                    {result.logoUrl ? (
+                      <img
+                        src={result.logoUrl}
+                        alt=""
+                        className="h-full w-full object-contain p-1"
+                      />
+                    ) : (
+                      "🏆"
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-lg font-black">
+                      {result.squadName}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Slot #{result.slot}
+                    </p>
+                  </div>
                 </div>
 
-                {standings.map((standing) => (
-                  <div
-                    key={standing.squadId}
-                    className="grid grid-cols-[70px_minmax(200px,1fr)_100px_130px_110px_140px_120px] items-center border-b border-white/5 px-4 py-3 last:border-b-0"
-                  >
-                    <div className="font-black text-violet-400">
-                      #{standing.rank}
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
-                        {standing.logoUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={standing.logoUrl}
-                            alt=""
-                            className="h-full w-full object-contain p-1"
-                          />
-                        ) : (
-                          "🏆"
-                        )}
-                      </div>
-
-                      <span className="font-black">
-                        {standing.squadName}
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {result.players.slice(0, 4).map((player, playerIndex) => (
+                    <label
+                      key={`${result.squadId}-${playerIndex}`}
+                      className="rounded-xl border border-white/10 bg-black/20 p-3"
+                    >
+                      <span className="block truncate text-xs font-bold text-slate-300">
+                        {player.name}
                       </span>
-                    </div>
+                      <span className="mt-2 block text-[9px] font-bold uppercase text-slate-500">
+                        Kills
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={player.kills}
+                        onChange={(event) =>
+                          updatePlayerKills(
+                            result.squadId,
+                            playerIndex,
+                            Number(event.target.value),
+                          )
+                        }
+                        className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-center font-black outline-none focus:border-violet-400"
+                      />
+                    </label>
+                  ))}
+                </div>
 
-                    <div>{standing.matchesPlayed}</div>
-                    <div>{standing.chickenDinners}</div>
-                    <div>{standing.totalKills}</div>
-                    <div>{standing.placementPoints}</div>
+                <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <ReadOnlyScore label="Team Kills" value={result.totalKills} />
+                  <ReadOnlyScore label="Kill Pts" value={result.killPoints} />
 
-                    <div className="text-xl font-black text-violet-400">
-                      {standing.totalPoints}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+                  <label className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
+                    <span className="text-[9px] font-bold uppercase text-slate-500">
+                      Place Pts
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={result.placementPoints}
+                      onChange={(event) =>
+                        updatePlacementPoints(
+                          result.squadId,
+                          Number(event.target.value),
+                        )
+                      }
+                      className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-2 text-center font-black outline-none focus:border-violet-400"
+                    />
+                  </label>
 
-            <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {matches.map((match) => (
-                <article
-                  key={match.id}
-                  className="rounded-2xl border border-white/10 bg-slate-900 p-5"
-                >
-                  <p className="text-xs font-black uppercase text-violet-400">
-                    Archived Match
-                  </p>
-
-                  <h2 className="mt-1 text-2xl font-black">
-                    Match {match.matchNumber}
-                  </h2>
-
-                  <p className="mt-1 text-sm text-slate-400">
-                    {match.squadCount} squads · {match.status}
-                  </p>
-
-                  <Link
-                    href={`/admin/archive/${archiveId}/matches/${match.id}`}
-                    className="mt-4 block rounded-lg bg-violet-600 px-4 py-2.5 text-center text-sm font-black"
-                  >
-                    View / Edit Results
-                  </Link>
-                </article>
-              ))}
-            </section>
-          </>
+                  <label className="rounded-xl border border-violet-400/30 bg-violet-400/10 p-3 text-center">
+                    <span className="text-[9px] font-bold uppercase text-violet-300">
+                      Total Pts
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={result.totalPoints}
+                      onChange={(event) =>
+                        updateTotalPoints(
+                          result.squadId,
+                          Number(event.target.value),
+                        )
+                      }
+                      className="mt-1 h-9 w-full rounded-lg border border-violet-400/30 bg-slate-950 px-2 text-center font-black outline-none"
+                    />
+                  </label>
+                </div>
+              </article>
+            ))}
+          </section>
         )}
       </div>
     </main>
+  );
+}
+
+function ReadOnlyScore({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
+      <p className="text-[9px] font-bold uppercase text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-xl font-black">{value}</p>
+    </div>
   );
 }

@@ -12,7 +12,7 @@ import {
   User,
 } from "firebase/auth";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/firebase";
 
 const ADMIN_EMAIL = "victornicetry2@gmail.com";
@@ -56,9 +56,13 @@ export default function ArchivePage() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [archives, setArchives] = useState<ArchiveItem[]>([]);
+  const [view, setView] = useState<"new" | "previous">("new");
 
   const isAdmin =
     user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const newestArchive = useMemo(() => archives[0] ?? null, [archives]);
+  const previousArchives = useMemo(() => archives.slice(1), [archives]);
+
 
   useEffect(
     () =>
@@ -193,82 +197,139 @@ export default function ArchivePage() {
           </div>
         </header>
 
+        <section className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setView("new")}
+              className={`rounded-xl px-4 py-3 text-sm font-black uppercase transition ${
+                view === "new"
+                  ? "bg-violet-600 text-white"
+                  : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              New Update
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("previous")}
+              className={`rounded-xl px-4 py-3 text-sm font-black uppercase transition ${
+                view === "previous"
+                  ? "bg-violet-600 text-white"
+                  : "border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              Previous Updates ({previousArchives.length})
+            </button>
+          </div>
+        </section>
+
         {loading ? (
           <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-8 text-center text-slate-400">
             Loading archives...
           </div>
         ) : archives.length === 0 ? (
           <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-10 text-center">
-            <h2 className="text-xl font-black">
-              No archived tournaments
-            </h2>
-
+            <h2 className="text-xl font-black">No archived tournaments</h2>
             <p className="mt-2 text-sm text-slate-400">
-              Use Archive &amp; Reset from Match History.
+              Archive the current scrim and it will appear here as the New Update.
+            </p>
+          </div>
+        ) : view === "new" ? (
+          newestArchive ? (
+            <section className="mt-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
+                    Latest Archive
+                  </p>
+                  <h2 className="mt-1 text-2xl font-black">New Update</h2>
+                </div>
+                <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-3 py-1 text-xs font-black uppercase text-violet-200">
+                  Newest
+                </span>
+              </div>
+              <ArchiveCard archive={newestArchive} featured />
+            </section>
+          ) : null
+        ) : previousArchives.length === 0 ? (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900 p-10 text-center">
+            <h2 className="text-xl font-black">No previous updates yet</h2>
+            <p className="mt-2 text-sm text-slate-400">
+              Older archives will move here automatically after you archive another scrim.
             </p>
           </div>
         ) : (
-          <section className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {archives.map((archive) => (
-              <article
-                key={archive.id}
-                className="rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                    {archive.championLogoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={archive.championLogoUrl}
-                        alt={`${archive.championName} logo`}
-                        className="h-full w-full object-contain p-1"
-                      />
-                    ) : (
-                      <span className="text-2xl">🏆</span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0">
-                    <h2 className="truncate text-xl font-black">
-                      {archive.tournamentName}
-                    </h2>
-
-                    <p className="text-sm text-slate-400">
-                      {archive.season
-                        ? `Season ${archive.season} · `
-                        : ""}
-                      {formatDate(archive.archivedAt)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid grid-cols-3 gap-2">
-                  <Stat
-                    label="Champion"
-                    value={archive.championName}
-                  />
-                  <Stat
-                    label="Matches"
-                    value={archive.matchCount}
-                  />
-                  <Stat
-                    label="Squads"
-                    value={archive.squadCount}
-                  />
-                </div>
-
-                <Link
-                  href={`/admin/archive/${archive.id}`}
-                  className="mt-5 block rounded-lg bg-violet-600 px-4 py-2.5 text-center text-sm font-black"
-                >
-                  View Archive
-                </Link>
-              </article>
-            ))}
+          <section className="mt-4">
+            <div className="mb-3">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-400">
+                Archive History
+              </p>
+              <h2 className="mt-1 text-2xl font-black">Previous Updates</h2>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {previousArchives.map((archive) => (
+                <ArchiveCard key={archive.id} archive={archive} />
+              ))}
+            </div>
           </section>
         )}
       </div>
     </main>
+  );
+}
+
+function ArchiveCard({
+  archive,
+  featured = false,
+}: {
+  archive: ArchiveItem;
+  featured?: boolean;
+}) {
+  return (
+    <article
+      className={`rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl ${
+        featured ? "ring-1 ring-violet-500/30" : ""
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
+          {archive.championLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={archive.championLogoUrl}
+              alt={`${archive.championName} logo`}
+              className="h-full w-full object-contain p-1"
+            />
+          ) : (
+            <span className="text-2xl">🏆</span>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <h2 className="truncate text-xl font-black">
+            {archive.tournamentName}
+          </h2>
+          <p className="text-sm text-slate-400">
+            {archive.season ? `Season ${archive.season} · ` : ""}
+            {formatDate(archive.archivedAt)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        <Stat label="Champion" value={archive.championName} />
+        <Stat label="Matches" value={archive.matchCount} />
+        <Stat label="Squads" value={archive.squadCount} />
+      </div>
+
+      <Link
+        href={`/admin/archive/${archive.id}`}
+        className="mt-5 block rounded-lg bg-violet-600 px-4 py-2.5 text-center text-sm font-black"
+      >
+        View Update
+      </Link>
+    </article>
   );
 }
 
