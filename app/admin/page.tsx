@@ -1,1371 +1,564 @@
 "use client";
 
 import {
-  addDoc,
   collection,
-  deleteDoc,
   doc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
-  Timestamp,
-  updateDoc,
-  where,
-  getDoc,
 } from "firebase/firestore";
-import {
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-  User,
-} from "firebase/auth";
-import Link from "next/link";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { auth, db, googleProvider } from "@/firebase";
-import CountryPicker from "@/components/CountryPicker";
-import { flagUrl, getCountryByCode } from "@/lib/countries";
+import { useEffect, useState } from "react";
+import { db } from "@/firebase";
 
-type Player = {
-  name: string;
-  role?: string;
+type LiveMatchSettings = {
+  matchNumber: number;
+  status: "not-started" | "live" | "finalized";
+  map?: string;
+  aliveSquads?: number;
+  alivePlayers?: number;
 };
 
-type SquadStatus = "pending" | "approved" | "rejected";
+type TournamentSettings = {
+  name: string;
+  season?: string;
+  eventName?: string;
+  matchesPlanned: number;
+  matchSchedule?: Array<{
+    id: string;
+    map: string;
+    startTime: string;
+  }>;
+};
 
-type Squad = {
-  id: string;
+type Standing = {
+  squadId: string;
   squadName: string;
-  players: Player[];
-  logoUrl?: string;
-  logoPublicId?: string;
-  ownerName?: string;
-  ownerEmail?: string;
-  facebookName?: string;
+  logoUrl: string;
   countryCode?: string;
   countryName?: string;
-  status: SquadStatus;
-  slot?: number;
-  createdAt?: Timestamp | Date | null;
+  totalKills: number;
+  totalPoints: number;
 };
 
-const OWNER_EMAIL = "victornicetry2@gmail.com";
+const defaultTournament: TournamentSettings = {
+  name: "N² Scrims",
+  season: "Season 1",
+  eventName: "Event 1",
+  matchesPlanned: 1,
+  matchSchedule: [],
+};
 
-export default function AdminPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [squads, setSquads] = useState<Squad[]>([]);
-  const [loadingSquads, setLoadingSquads] = useState(false);
-  const [search, setSearch] = useState("");
-  const [message, setMessage] = useState("");
-  const [workingId, setWorkingId] = useState<string | null>(null);
-  const [rejectingAll, setRejectingAll] = useState(false);
-  const [removingAll, setRemovingAll] = useState(false);
-  const [selectedLogo, setSelectedLogo] = useState<{
-    url: string;
-    squadName: string;
-  } | null>(null);
-  const [editingSquad, setEditingSquad] = useState<Squad | null>(null);
-  const [editSquadName, setEditSquadName] = useState("");
-  const [editFacebookName, setEditFacebookName] = useState("");
-  const [editCountryCode, setEditCountryCode] = useState("");
-  const [editPlayerNames, setEditPlayerNames] = useState(["", "", "", ""]);
-  const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
-  const [editLogoPreview, setEditLogoPreview] = useState("");
-  const [removeCurrentLogo, setRemoveCurrentLogo] = useState(false);
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [showAddSquad, setShowAddSquad] = useState(false);
-  const [newSquadName, setNewSquadName] = useState("");
-  const [newFacebookName, setNewFacebookName] = useState("");
-  const [newCountryCode, setNewCountryCode] = useState("");
-  const [newPlayerNames, setNewPlayerNames] = useState(["", "", "", ""]);
-  const [newSlot, setNewSlot] = useState("");
-  const [newLogoFile, setNewLogoFile] = useState<File | null>(null);
-  const [newLogoPreview, setNewLogoPreview] = useState("");
-  const [savingNewSquad, setSavingNewSquad] = useState(false);
-  const [staffLoading, setStaffLoading] = useState(true);
-  const [hasAdminAccess, setHasAdminAccess] = useState(false);
+export default function LiveOverlayPage() {
+  const [liveMatch, setLiveMatch] = useState<LiveMatchSettings>({
+    matchNumber: 1,
+    status: "not-started",
+    aliveSquads: 0,
+    alivePlayers: 0,
+  });
 
-  const isOwner =
-    user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
-  const isAdmin = isOwner || hasAdminAccess;
+  const [tournament, setTournament] =
+    useState<TournamentSettings>(defaultTournament);
+
+  const [standings, setStandings] = useState<Standing[]>([]);
+  const [squadCountries, setSquadCountries] = useState<
+    Record<string, { countryCode: string; countryName: string }>
+  >({});
 
   useEffect(() => {
-    return onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
-    });
+    return onSnapshot(
+      doc(db, "settings", "liveMatch"),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+
+        const data = snapshot.data();
+
+        setLiveMatch({
+          matchNumber: Number(data.matchNumber) || 1,
+          status:
+            data.status === "live" || data.status === "finalized"
+              ? data.status
+              : "not-started",
+          map: typeof data.map === "string" ? data.map : "",
+          aliveSquads: Number(data.aliveSquads) || 0,
+          alivePlayers: Number(data.alivePlayers) || 0,
+        });
+      },
+      (error) => {
+        console.error("Unable to load live match:", error);
+      },
+    );
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function checkStaffAccess() {
-      if (!user?.email) {
-        setHasAdminAccess(false);
-        setStaffLoading(false);
-        return;
-      }
-
-      if (user.email.toLowerCase() === OWNER_EMAIL.toLowerCase()) {
-        setHasAdminAccess(true);
-        setStaffLoading(false);
-        return;
-      }
-
-      try {
-        setStaffLoading(true);
-        const staffSnapshot = await getDoc(
-          doc(db, "staff", user.email.toLowerCase()),
-        );
-
-        if (!cancelled) {
-          const data = staffSnapshot.data();
-          setHasAdminAccess(
-            staffSnapshot.exists() &&
-              data?.active === true &&
-              data?.role === "admin",
-          );
+    return onSnapshot(
+      doc(db, "settings", "tournament"),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setTournament(defaultTournament);
+          return;
         }
-      } catch (error) {
-        console.error("Unable to verify staff access:", error);
-        if (!cancelled) setHasAdminAccess(false);
-      } finally {
-        if (!cancelled) setStaffLoading(false);
-      }
-    }
 
-    void checkStaffAccess();
+        const data = snapshot.data();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  useEffect(() => {
-    if (isAdmin) {
-      void loadSquads();
-    }
-  }, [isAdmin]);
-
-
-  useEffect(() => {
-    function closeWithEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setSelectedLogo(null);
-      }
-    }
-
-    window.addEventListener("keydown", closeWithEscape);
-    return () => window.removeEventListener("keydown", closeWithEscape);
+        setTournament({
+          ...defaultTournament,
+          ...(data as Partial<TournamentSettings>),
+          matchSchedule: Array.isArray(data.matchSchedule)
+            ? data.matchSchedule
+            : [],
+        });
+      },
+      (error) => {
+        console.error("Unable to load tournament settings:", error);
+      },
+    );
   }, []);
 
-  async function signInWithGoogle() {
-    try {
-      setMessage("");
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error(error);
-      setMessage("Google sign-in failed. Please try again.");
-    }
-  }
+  useEffect(() => {
+    return onSnapshot(collection(db, "squads"), (snapshot) => {
+      const countries: Record<
+        string,
+        { countryCode: string; countryName: string }
+      > = {};
 
-  async function handleSignOut() {
-    try {
-      await signOut(auth);
-      setSquads([]);
-    } catch (error) {
-      console.error(error);
-      setMessage("Sign-out failed.");
-    }
-  }
-
-  async function loadSquads() {
-    setLoadingSquads(true);
-    setMessage("");
-
-    try {
-      let snapshot;
-
-      try {
-        snapshot = await getDocs(
-          query(collection(db, "squads"), orderBy("createdAt", "desc")),
-        );
-      } catch {
-        snapshot = await getDocs(collection(db, "squads"));
-      }
-
-      const loadedSquads: Squad[] = snapshot.docs.map((squadDocument) => {
+      snapshot.docs.forEach((squadDocument) => {
         const data = squadDocument.data();
-
-        return {
-          id: squadDocument.id,
-          squadName:
-            typeof data.squadName === "string"
-              ? data.squadName
-              : "Unnamed Squad",
-          players: Array.isArray(data.players) ? data.players : [],
-          logoUrl:
-            typeof data.logoUrl === "string" ? data.logoUrl : "",
-          logoPublicId:
-            typeof data.logoPublicId === "string" ? data.logoPublicId : "",
-          ownerName:
-            typeof data.ownerName === "string" ? data.ownerName : "",
-          ownerEmail:
-            typeof data.ownerEmail === "string" ? data.ownerEmail : "",
-          facebookName:
-            typeof data.facebookName === "string" ? data.facebookName : "",
+        const country = {
           countryCode:
             typeof data.countryCode === "string" ? data.countryCode : "",
           countryName:
             typeof data.countryName === "string" ? data.countryName : "",
-          status:
-            data.status === "approved" || data.status === "rejected"
-              ? data.status
-              : "pending",
-          slot: typeof data.slot === "number" ? data.slot : undefined,
-          createdAt: data.createdAt || null,
         };
+
+        countries[squadDocument.id] = country;
+
+        if (typeof data.squadName === "string" && data.squadName.trim()) {
+          countries[`name:${normalizeSquadName(data.squadName)}`] = country;
+        }
       });
 
-      loadedSquads.sort(
-        (first, second) =>
-          getCreatedTime(second.createdAt) -
-          getCreatedTime(first.createdAt),
-      );
-
-      setSquads(loadedSquads);
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to load squads from Firestore.");
-    } finally {
-      setLoadingSquads(false);
-    }
-  }
-
-  async function updateStatus(
-    squadId: string,
-    status: SquadStatus,
-  ) {
-    setWorkingId(squadId);
-    setMessage("");
-
-    try {
-      await updateDoc(doc(db, "squads", squadId), { status });
-
-      setSquads((current) =>
-        current.map((squad) =>
-          squad.id === squadId ? { ...squad, status } : squad,
-        ),
-      );
-
-      setMessage(`Squad status changed to ${status}.`);
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to update squad status.");
-    } finally {
-      setWorkingId(null);
-    }
-  }
-
-  async function rejectAllSquads() {
-    if (rejectingAll || squads.length === 0) return;
-
-    const confirmed = window.confirm(
-      `Reject all ${squads.length} registered squads? This will change every squad's status to rejected.`,
-    );
-
-    if (!confirmed) return;
-
-    setRejectingAll(true);
-    setMessage("");
-
-    try {
-      await Promise.all(
-        squads.map((squad) =>
-          updateDoc(doc(db, "squads", squad.id), { status: "rejected" }),
-        ),
-      );
-
-      setSquads((current) =>
-        current.map((squad) => ({ ...squad, status: "rejected" })),
-      );
-
-      setMessage(`All ${squads.length} squads were rejected.`);
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to reject all squads. Refresh and try again.");
-      await loadSquads();
-    } finally {
-      setRejectingAll(false);
-    }
-  }
-
-  async function removeAllSquads() {
-    if (removingAll || squads.length === 0) return;
-
-    const confirmed = window.confirm(
-      `Permanently remove all ${squads.length} registered squads? This cannot be undone.`,
-    );
-
-    if (!confirmed) return;
-
-    const confirmedAgain = window.confirm(
-      "FINAL WARNING: This will permanently delete every registration. Continue?",
-    );
-
-    if (!confirmedAgain) return;
-
-    setRemovingAll(true);
-    setMessage("");
-
-    try {
-      await Promise.all(
-        squads.map((squad) => deleteDoc(doc(db, "squads", squad.id))),
-      );
-
-      setSquads([]);
-      setMessage("All registrations were permanently removed.");
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to remove all registrations. Refresh and try again.");
-      await loadSquads();
-    } finally {
-      setRemovingAll(false);
-    }
-  }
-
-  function resetAddSquadForm() {
-    setNewSquadName("");
-    setNewFacebookName("");
-    setNewCountryCode("");
-    setNewPlayerNames(["", "", "", ""]);
-    setNewSlot("");
-    setNewLogoFile(null);
-    setNewLogoPreview("");
-  }
-
-  function closeAddSquad() {
-    if (savingNewSquad) return;
-    setShowAddSquad(false);
-    resetAddSquadForm();
-  }
-
-  function handleNewLogoChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setMessage("The logo must be a PNG, JPG, JPEG, or WebP image.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setMessage("The logo must be smaller than 5 MB.");
-      event.target.value = "";
-      return;
-    }
-
-    setNewLogoFile(file);
-    setNewLogoPreview(URL.createObjectURL(file));
-  }
-
-  async function createAdminSquad() {
-    if (!user || savingNewSquad) return;
-
-    const cleanSquadName = newSquadName.trim();
-    const cleanFacebookName = newFacebookName.trim();
-    const selectedCountry = getCountryByCode(newCountryCode);
-    const cleanPlayers = newPlayerNames.map((name) => name.trim());
-    const parsedSlot = newSlot.trim() ? Number.parseInt(newSlot, 10) : null;
-
-    if (!cleanSquadName) {
-      setMessage("Squad name is required.");
-      return;
-    }
-
-    if (cleanPlayers.some((name) => !name)) {
-      setMessage("All 4 player names are required.");
-      return;
-    }
-
-    if (new Set(cleanPlayers.map((name) => name.toLowerCase())).size !== 4) {
-      setMessage("Each player must have a different name.");
-      return;
-    }
-
-    if (parsedSlot !== null && (Number.isNaN(parsedSlot) || parsedSlot < 1)) {
-      setMessage("Slot must be a positive number.");
-      return;
-    }
-
-    setSavingNewSquad(true);
-    setMessage("");
-
-    try {
-      const duplicateSnapshot = await getDocs(
-        query(
-          collection(db, "squads"),
-          where("squadNameLower", "==", cleanSquadName.toLowerCase()),
-        ),
-      );
-
-      if (!duplicateSnapshot.empty) {
-        setMessage("That squad name is already registered.");
-        return;
-      }
-
-      let logoUrl = "";
-      let logoPublicId = "";
-
-      if (newLogoFile) {
-        const formData = new FormData();
-        formData.append("file", newLogoFile);
-
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const result = await response.json();
-
-        if (!response.ok || !result.logoUrl) {
-          throw new Error(result.error || "Unable to upload the team logo.");
-        }
-
-        logoUrl = result.logoUrl;
-        logoPublicId = result.logoPublicId || "";
-      }
-
-      const players = cleanPlayers.map((name, index) => ({
-        name,
-        role: index === 0 ? "Captain" : `Player ${index + 1}`,
-      }));
-
-      const payload: Record<string, unknown> = {
-        squadName: cleanSquadName,
-        squadNameLower: cleanSquadName.toLowerCase(),
-        facebookName: cleanFacebookName,
-        countryCode: newCountryCode,
-        countryName: selectedCountry?.name || "",
-        players,
-        logoUrl,
-        logoPublicId,
-        status: "approved",
-        ownerUid: user.uid,
-        ownerName: user.displayName || "Admin",
-        ownerEmail: user.email || "",
-        createdByAdmin: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      if (parsedSlot !== null) payload.slot = parsedSlot;
-
-      await addDoc(collection(db, "squads"), payload);
-
-      setMessage(`${cleanSquadName} was added and approved.`);
-      setShowAddSquad(false);
-      resetAddSquadForm();
-      await loadSquads();
-    } catch (error) {
-      console.error("Unable to add squad:", error);
-      setMessage(error instanceof Error ? error.message : "Unable to add squad.");
-    } finally {
-      setSavingNewSquad(false);
-    }
-  }
-
-  function openEditSquad(squad: Squad) {
-    setEditingSquad(squad);
-    setEditSquadName(squad.squadName);
-    setEditFacebookName(squad.facebookName || "");
-    setEditCountryCode(squad.countryCode || "");
-    setEditPlayerNames([0, 1, 2, 3].map((index) => squad.players[index]?.name || ""));
-    setEditLogoFile(null);
-    setEditLogoPreview(squad.logoUrl || "");
-    setRemoveCurrentLogo(false);
-    setMessage("");
-  }
-
-  function closeEditSquad() {
-    if (savingEdit) return;
-    setEditingSquad(null);
-    setEditCountryCode("");
-    setEditLogoFile(null);
-    setEditLogoPreview("");
-    setRemoveCurrentLogo(false);
-  }
-
-  function handleEditLogoChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setMessage("The logo must be a PNG, JPG, JPEG, or WebP image.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setMessage("The logo must be smaller than 5 MB.");
-      event.target.value = "";
-      return;
-    }
-
-    setEditLogoFile(file);
-    setEditLogoPreview(URL.createObjectURL(file));
-    setRemoveCurrentLogo(false);
-  }
-
-  async function saveSquadEdits() {
-    if (!editingSquad || savingEdit) return;
-
-    const cleanSquadName = editSquadName.trim();
-    const cleanFacebookName = editFacebookName.trim();
-    const cleanPlayers = editPlayerNames.map((name) => name.trim());
-
-    if (!cleanSquadName) {
-      setMessage("Squad name is required.");
-      return;
-    }
-
-    if (cleanPlayers.some((name) => !name)) {
-      setMessage("All 4 player names are required.");
-      return;
-    }
-
-    if (new Set(cleanPlayers.map((name) => name.toLowerCase())).size !== 4) {
-      setMessage("Each player must have a different name.");
-      return;
-    }
-
-    setSavingEdit(true);
-    setWorkingId(editingSquad.id);
-    setMessage("");
-
-    try {
-      const duplicateSnapshot = await getDocs(
-        query(
-          collection(db, "squads"),
-          where("squadNameLower", "==", cleanSquadName.toLowerCase()),
-        ),
-      );
-
-      if (duplicateSnapshot.docs.some((item) => item.id !== editingSquad.id)) {
-        setMessage("That squad name is already registered.");
-        return;
-      }
-
-      let logoUrl = removeCurrentLogo ? "" : editingSquad.logoUrl || "";
-      let logoPublicId = removeCurrentLogo ? "" : editingSquad.logoPublicId || "";
-
-      if (editLogoFile) {
-        const formData = new FormData();
-        formData.append("file", editLogoFile);
-
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const result = await response.json();
-
-        if (!response.ok || !result.logoUrl) {
-          throw new Error(result.error || "Unable to upload the new logo.");
-        }
-
-        logoUrl = result.logoUrl;
-        logoPublicId = result.logoPublicId || "";
-      }
-
-      const players = cleanPlayers.map((name, index) => ({
-        name,
-        role: index === 0 ? "Captain" : `Player ${index + 1}`,
-      }));
-
-      const selectedCountry = getCountryByCode(editCountryCode);
-
-      await updateDoc(doc(db, "squads", editingSquad.id), {
-        squadName: cleanSquadName,
-        squadNameLower: cleanSquadName.toLowerCase(),
-        facebookName: cleanFacebookName,
-        countryCode: editCountryCode,
-        countryName: selectedCountry?.name || "",
-        players,
-        logoUrl,
-        logoPublicId,
-      });
-
-      setSquads((current) =>
-        current.map((squad) =>
-          squad.id === editingSquad.id
-            ? {
-                ...squad,
-                squadName: cleanSquadName,
-                facebookName: cleanFacebookName,
-                countryCode: editCountryCode,
-                countryName: selectedCountry?.name || "",
-                players,
-                logoUrl,
-                logoPublicId,
-              }
-            : squad,
-        ),
-      );
-
-      setMessage(`${cleanSquadName} was updated.`);
-      setEditingSquad(null);
-    } catch (error) {
-      console.error(error);
-      setMessage(error instanceof Error ? error.message : "Unable to update squad.");
-    } finally {
-      setSavingEdit(false);
-      setWorkingId(null);
-    }
-  }
-
-  async function removeRejectedSquad(squad: Squad) {
-    if (squad.status !== "rejected") return;
-
-    if (
-      !window.confirm(
-        `Permanently remove "${squad.squadName}"?`,
-      )
-    ) {
-      return;
-    }
-
-    setWorkingId(squad.id);
-
-    try {
-      await deleteDoc(doc(db, "squads", squad.id));
-      setSquads((current) =>
-        current.filter((item) => item.id !== squad.id),
-      );
-      setMessage(`${squad.squadName} was removed.`);
-    } catch (error) {
-      console.error(error);
-      setMessage("Unable to remove squad.");
-    } finally {
-      setWorkingId(null);
-    }
-  }
-
-  const filteredSquads = useMemo(() => {
-    const term = search.trim().toLowerCase();
-
-    if (!term) return squads;
-
-    return squads.filter((squad) => {
-      const playerNames = squad.players
-        .map((player) => player.name)
-        .join(" ")
-        .toLowerCase();
-
-      return (
-        squad.squadName.toLowerCase().includes(term) ||
-        squad.ownerName?.toLowerCase().includes(term) ||
-        squad.ownerEmail?.toLowerCase().includes(term) ||
-        squad.facebookName?.toLowerCase().includes(term) ||
-        squad.countryName?.toLowerCase().includes(term) ||
-        squad.countryCode?.toLowerCase().includes(term) ||
-        squad.status.toLowerCase().includes(term) ||
-        playerNames.includes(term)
-      );
+      setSquadCountries(countries);
     });
-  }, [squads, search]);
+  }, []);
 
-  const pendingSquads = squads.filter(
-    (squad) => squad.status === "pending",
-  ).length;
-  const approvedSquads = squads.filter(
-    (squad) => squad.status === "approved",
-  ).length;
-  const rejectedSquads = squads.filter(
-    (squad) => squad.status === "rejected",
-  ).length;
-
-  if (authLoading || staffLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-white">
-        Loading admin page...
-      </main>
+  useEffect(() => {
+    const standingsQuery = query(
+      collection(db, "standings"),
+      orderBy("totalPoints", "desc"),
     );
-  }
 
-  if (!user) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
-        <section className="w-full max-w-md rounded-3xl border border-blue-900 bg-black/90 p-8 text-center">
-          <p className="text-sm font-black uppercase tracking-[0.35em] text-blue-400">
-            N² Scrims
-          </p>
-          <h1 className="mt-4 text-4xl font-black uppercase">
-            Admin Dashboard
-          </h1>
-          <button
-            type="button"
-            onClick={() => void signInWithGoogle()}
-            className="mt-8 w-full rounded-xl bg-blue-700 px-6 py-4 font-black uppercase"
-          >
-            Sign In With Google
-          </button>
-          {message && (
-            <p className="mt-4 text-sm text-red-300">
-              {message}
-            </p>
-          )}
-        </section>
-      </main>
-    );
-  }
+    return onSnapshot(
+      standingsQuery,
+      (snapshot) => {
+        const loaded: Standing[] = snapshot.docs.map((standingDocument) => {
+          const data = standingDocument.data();
 
-  if (!isAdmin) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
-        <section className="w-full max-w-lg rounded-3xl border border-red-900 bg-black/90 p-8 text-center">
-          <h1 className="text-3xl font-black uppercase text-red-400">
-            Access Denied
-          </h1>
-          <button
-            type="button"
-            onClick={() => void handleSignOut()}
-            className="mt-7 rounded-xl bg-blue-700 px-6 py-3 font-bold uppercase"
-          >
-            Sign Out
-          </button>
-        </section>
-      </main>
+          return {
+            squadId: standingDocument.id,
+            squadName:
+              typeof data.squadName === "string"
+                ? data.squadName
+                : "Unnamed Squad",
+            logoUrl:
+              typeof data.logoUrl === "string" ? data.logoUrl : "",
+            totalKills: Number(data.totalKills) || 0,
+            totalPoints: Number(data.totalPoints) || 0,
+          };
+        });
+
+        loaded.sort((a, b) => {
+          if (b.totalPoints !== a.totalPoints) {
+            return b.totalPoints - a.totalPoints;
+          }
+
+          if (b.totalKills !== a.totalKills) {
+            return b.totalKills - a.totalKills;
+          }
+
+          return a.squadName.localeCompare(b.squadName);
+        });
+
+        setStandings(loaded);
+      },
+      (error) => {
+        console.error("Unable to load standings:", error);
+      },
     );
-  }
+  }, []);
+
+  const scheduledMatch =
+    tournament.matchSchedule?.[liveMatch.matchNumber - 1];
+
+  const currentMap =
+    liveMatch.map || scheduledMatch?.map || "Map not set";
+
+  const plannedMatches = Math.max(
+    1,
+    tournament.matchSchedule?.length ||
+      Number(tournament.matchesPlanned) ||
+      1,
+  );
+
+  const visibleStandings = standings.slice(0, 10);
 
   return (
-    <>
-      <main className="min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[1500px]">
-          <header className="rounded-3xl border border-blue-900 bg-black/90 p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm font-black uppercase tracking-[0.3em] text-blue-400">
-                  N² Scrims
-                </p>
-                <h1 className="mt-2 text-3xl font-black uppercase sm:text-4xl">
-                  Admin Dashboard
-                </h1>
-                <p className="mt-2 text-sm text-gray-400">
-                  Signed in as {user.email}
-                </p>
+    <main className="pointer-events-none min-h-screen bg-transparent text-white antialiased">
+      <style jsx global>{`
+        html,
+        body {
+          background: transparent !important;
+        }
+
+        body {
+          margin: 0;
+          overflow: hidden;
+        }
+
+        @keyframes overlay-enter {
+          from {
+            opacity: 0;
+            transform: translateX(55px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes live-pulse {
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.45;
+          }
+        }
+
+        .overlay-enter {
+          animation: overlay-enter 0.55s ease-out both;
+        }
+
+        .live-pulse {
+          animation: live-pulse 1.3s ease-in-out infinite;
+        }
+
+        @media (max-width: 900px) {
+          .overlay-enter {
+            width: min(92vw, 520px) !important;
+            min-width: 0 !important;
+            height: 94vh !important;
+          }
+        }
+      `}</style>
+
+      <div className="flex min-h-screen items-center justify-end px-6 py-4">
+        <aside className="overlay-enter flex h-[94vh] w-[min(32vw,520px)] min-w-[440px] flex-col overflow-hidden border border-white/20 bg-transparent">
+          <div className="h-px bg-white/40" />
+
+          <header className="relative overflow-hidden border-b border-white bg-white px-6 py-5 text-black">
+            <div className="absolute inset-0 bg-transparent" />
+
+            <div className="relative">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-black/20 bg-transparent">
+                    {/* Place your logo at: public/n2-logo.png */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/n2-logo.png"
+                      alt="N² logo"
+                      className="h-full w-full object-contain p-1.5"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                        const fallback =
+                          event.currentTarget.nextElementSibling as HTMLElement | null;
+
+                        if (fallback) {
+                          fallback.style.display = "flex";
+                        }
+                      }}
+                    />
+
+                    <span className="hidden h-full w-full items-center justify-center text-xl font-black italic text-black">
+                      N²
+                    </span>
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-black uppercase tracking-[0.28em] text-black">
+                      {tournament.name}
+                    </p>
+
+                    <p className="mt-1 truncate text-[12px] font-bold uppercase tracking-[0.16em] text-neutral-700">
+                      {[tournament.season, tournament.eventName]
+                        .filter(Boolean)
+                        .join(" • ")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2 rounded-full border border-black/30 bg-transparent px-3 py-1.5">
+                  <span className="live-pulse h-2 w-2 rounded-full bg-black" />
+                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-black">
+                    {liveMatch.status === "live" ? "Live" : liveMatch.status}
+                  </span>
+                </div>
               </div>
 
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetAddSquadForm();
-                    setShowAddSquad(true);
-                    setMessage("");
-                  }}
-                  className="rounded-xl bg-green-700 px-5 py-3 text-sm font-black uppercase hover:bg-green-600"
-                >
-                  + Add Squad
-                </button>
+              <div className="mt-5 flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-black">
+                    Live Tournament
+                  </p>
+                  <h1 className="mt-1 text-4xl font-black uppercase italic leading-none">
+                    Standings
+                  </h1>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => void loadSquads()}
-                  disabled={loadingSquads}
-                  className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase disabled:opacity-50"
-                >
-                  {loadingSquads ? "Refreshing..." : "Refresh Squads"}
-                </button>
+                <div className="text-right">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+                    Match
+                  </p>
+                  <p className="text-2xl font-black text-black">
+                    {liveMatch.matchNumber}/{plannedMatches}
+                  </p>
+                </div>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => void rejectAllSquads()}
-                  disabled={rejectingAll || loadingSquads || squads.length === 0}
-                  className="rounded-xl bg-red-700 px-5 py-3 text-sm font-black uppercase hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {rejectingAll ? "Rejecting All..." : "Reject All"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void removeAllSquads()}
-                  disabled={removingAll || rejectingAll || loadingSquads || squads.length === 0}
-                  className="rounded-xl border border-red-500 bg-red-950 px-5 py-3 text-sm font-black uppercase text-red-200 hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {removingAll ? "Removing All..." : "Remove All"}
-                </button>
-
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                <InfoBox label="Map" value={currentMap} />
+                <InfoBox
+                  label="Alive"
+                  value={
+                    liveMatch.aliveSquads
+                      ? `${liveMatch.aliveSquads} SQ`
+                      : "—"
+                  }
+                />
+                <InfoBox
+                  label="Players"
+                  value={
+                    liveMatch.alivePlayers
+                      ? String(liveMatch.alivePlayers)
+                      : "—"
+                  }
+                />
               </div>
             </div>
           </header>
 
-          <section className="mt-6">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-400">
-                Tournament Management
-              </p>
-              <h2 className="mt-2 text-2xl font-black uppercase">
-                Admin Tools
-              </h2>
+          <section className="min-h-0 flex-1 overflow-hidden bg-black/[0.85] px-4 py-4">
+            <div className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border-b border-white/10 px-2 pb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white">
+              <span>Rank</span>
+              <span />
+              <span />
+              <span>Team</span>
+              <span className="text-center">Kills</span>
+              <span className="text-center">Total</span>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <AdminButton
-                href="/admin/matches"
-                title="Matches"
-                description="Create matches and manage live scoring"
-                icon="🎮"
-              />
-              <AdminButton
-                href="/admin/tournament"
-                title="Standings"
-                description="View and manage the tournament leaderboard"
-                icon="🏆"
-              />
-              <AdminButton
-                href="/admin/history"
-                title="History"
-                description="Review completed match results"
-                icon="📋"
-              />
-              <AdminButton
-                href="/admin/archive"
-                title="Archive"
-                description="Open previous tournament records"
-                icon="🗂️"
-              />
-              <AdminButton
-                href="/admin/settings"
-                title="Tournament Settings"
-                description="Edit tournament details, maps, rules, and schedule"
-                icon="⚙️"
-              />
-              <AdminButton
-                href="/admin/graphics"
-                title="Graphics"
-                description="Generate tournament result graphics"
-                icon="🖼️"
-              />
-              <AdminButton
-                href="/admin/tdm"
-                title="TDM"
-                description="Manage the TDM bracket, final results, and live overlay"
-                icon="⚔️"
-              />
-              {isOwner && (
-                <AdminButton
-                  href="/admin/staff"
-                  title="Staff Management"
-                  description="Add or remove administrators"
-                  icon="👑"
-                />
-              )}
-            </div>
-          </section>
-
-          <section className="mt-8 rounded-3xl border border-blue-900 bg-blue-950/10 p-5 sm:p-6">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-300">
-                Stream Control Center
-              </p>
-              <h2 className="mt-2 text-2xl font-black uppercase">
-                Overlays
-              </h2>
-              <p className="mt-2 text-sm text-gray-400">
-                Open any broadcast screen in a separate tab for TikTok Live Studio or OBS.
-              </p>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <AdminButton
-                href="/overlay"
-                title="Live Standings"
-                description="Open the live side standings overlay"
-                icon="🎥"
-                openInNewTab
-              />
-              <AdminButton
-                href="/overlay/results"
-                title="Match Results"
-                description="Open the complete end-of-match results screen"
-                icon="🏁"
-                openInNewTab
-              />
-              <AdminButton
-                href="/overlay/champion-team"
-                title="Champion Team"
-                description="Show the winning squad and all four player names"
-                icon="👑"
-                openInNewTab
-              />
-              <AdminButton
-                href="/overlay/champion"
-                title="Most Points"
-                description="Show the squad with the most tournament points"
-                icon="🏆"
-                openInNewTab
-              />
-              <AdminButton
-                href="/overlay/kill-leader"
-                title="Top Kills"
-                description="Show the squad with the most tournament kills"
-                icon="🔥"
-                openInNewTab
-              />
-              <AdminButton
-                href="/overlay/top5"
-                title="Top Chicken Dinners"
-                description="Show the top 5 squads ranked by chicken dinners"
-                icon="⭐"
-                openInNewTab
-              />
-            </div>
-          </section>
-
-          {message && (
-            <div className="mt-5 rounded-xl border border-blue-900 bg-blue-950/30 px-4 py-3 text-sm text-blue-200">
-              {message}
-            </div>
-          )}
-
-          <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Total" value={squads.length} />
-            <StatCard label="Pending" value={pendingSquads} />
-            <StatCard label="Approved" value={approvedSquads} />
-            <StatCard label="Rejected" value={rejectedSquads} />
-          </section>
-
-
-
-          <section className="mt-6 rounded-2xl border border-blue-900 bg-black/90 p-4">
-            <label className="text-xs font-black uppercase tracking-widest text-blue-400">
-              Search Squads
-            </label>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search squad, player, Messenger name, email, or status..."
-              className="mt-3 w-full rounded-xl border border-gray-800 bg-gray-950 px-4 py-3 text-white outline-none"
-            />
-          </section>
-
-          {loadingSquads ? (
-            <div className="mt-8 rounded-2xl border border-blue-900 bg-black/90 p-10 text-center text-blue-300">
-              Loading squads...
-            </div>
-          ) : (
-            <div className="mt-6 overflow-x-auto rounded-2xl border border-blue-900 bg-black/90">
-              <table className="w-full min-w-[1320px] text-left text-sm">
-                <thead className="border-b border-blue-900 bg-blue-950/30">
-                  <tr className="text-xs uppercase tracking-wider text-blue-300">
-                    <th className="px-3 py-3">#</th>
-                    <th className="px-3 py-3">Logo</th>
-                    <th className="px-3 py-3">Squad</th>
-                    <th className="px-3 py-3">Country</th>
-                    <th className="px-3 py-3">Slot</th>
-                    <th className="px-3 py-3">Players</th>
-                    <th className="px-3 py-3">Facebook / Messenger</th>
-                    <th className="px-3 py-3">Registered By</th>
-                    <th className="px-3 py-3">Status</th>
-                    <th className="px-3 py-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSquads.map((squad, index) => {
-                    const isWorking = workingId === squad.id;
-
-                    return (
-                      <tr
-                        key={squad.id}
-                        className="border-b border-gray-900"
-                      >
-                        <td className="px-3 py-3">
-                          {index + 1}
-                        </td>
-                        <td className="px-3 py-3">
-                          {squad.logoUrl ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedLogo({
-                                  url: squad.logoUrl || "",
-                                  squadName: squad.squadName,
-                                })
-                              }
-                              className="h-14 w-14 overflow-hidden rounded-xl border border-blue-800"
-                            >
-                              <img
-                                src={squad.logoUrl}
-                                alt=""
-                                className="h-full w-full object-contain"
-                              />
-                            </button>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className="px-3 py-3 font-black">
-                          {squad.squadName}
-                        </td>
-                        <td className="px-3 py-3">
-                          {squad.countryCode ? (
-                            <img
-                              src={flagUrl(squad.countryCode, 40)}
-                              alt=""
-                              title={squad.countryName || squad.countryCode}
-                              className="h-5 w-8 rounded-sm object-cover shadow-sm"
-                            />
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className="px-3 py-3 font-black text-blue-300">
-                          {squad.slot ?? "—"}
-                        </td>
-                        <td className="px-3 py-3 text-xs text-gray-300">
-                          {squad.players
-                            .map((player) => player.name)
-                            .join(", ")}
-                        </td>
-                        <td className="px-3 py-3 text-xs">
-                          <div className="font-bold text-blue-300">
-                            {squad.facebookName || "—"}
-                          </div>
-                          {squad.facebookName && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void navigator.clipboard.writeText(
-                                  squad.facebookName || "",
-                                )
-                              }
-                              className="mt-2 rounded-lg border border-blue-800 px-3 py-1.5 text-[11px] font-black uppercase text-blue-300 hover:bg-blue-950"
-                            >
-                              Copy Name
-                            </button>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 text-xs">
-                          <div>{squad.ownerName || "Unknown"}</div>
-                          <div className="text-gray-500">
-                            {squad.ownerEmail}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          {squad.status}
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={isWorking || rejectingAll || removingAll}
-                              onClick={() => openEditSquad(squad)}
-                              className="rounded-lg border border-blue-600 bg-blue-950 px-3 py-2 text-xs font-black uppercase text-blue-300 disabled:opacity-40"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isWorking || rejectingAll || removingAll}
-                              onClick={() =>
-                                void updateStatus(
-                                  squad.id,
-                                  "approved",
-                                )
-                              }
-                              className="rounded-lg bg-green-700 px-3 py-2 text-xs font-black uppercase disabled:opacity-40"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isWorking || rejectingAll || removingAll}
-                              onClick={() =>
-                                void updateStatus(
-                                  squad.id,
-                                  "pending",
-                                )
-                              }
-                              className="rounded-lg bg-yellow-700 px-3 py-2 text-xs font-black uppercase disabled:opacity-40"
-                            >
-                              Pending
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isWorking || rejectingAll || removingAll}
-                              onClick={() =>
-                                void updateStatus(
-                                  squad.id,
-                                  "rejected",
-                                )
-                              }
-                              className="rounded-lg bg-red-700 px-3 py-2 text-xs font-black uppercase disabled:opacity-40"
-                            >
-                              Reject
-                            </button>
-                            {squad.status === "rejected" && (
-                              <button
-                                type="button"
-                                disabled={isWorking || rejectingAll || removingAll}
-                                onClick={() =>
-                                  void removeRejectedSquad(squad)
-                                }
-                                className="rounded-lg border border-red-700 bg-red-950 px-3 py-2 text-xs font-black uppercase text-red-300 disabled:opacity-40"
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </main>
-
-      {showAddSquad && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/90 p-4 sm:p-8">
-          <div className="mx-auto w-full max-w-2xl rounded-3xl border border-green-800 bg-gray-950 p-6 text-white sm:p-8">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-widest text-green-400">Admin Squad Manager</p>
-                <h2 className="mt-2 text-3xl font-black">Add Squad</h2>
-                <p className="mt-2 text-sm text-gray-400">This squad will be approved immediately. No separate Gmail account is required.</p>
-              </div>
-              <button type="button" onClick={closeAddSquad} className="rounded-lg border border-gray-700 px-4 py-2 font-black">Close</button>
-            </div>
-
-            <div className="mt-7 grid gap-4 sm:grid-cols-[minmax(0,1fr)_150px]">
-              <label className="block">
-                <span className="text-sm font-bold text-gray-300">Squad Name</span>
-                <input value={newSquadName} onChange={(event) => setNewSquadName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" placeholder="Squad name" />
-              </label>
-              <label className="block">
-                <span className="text-sm font-bold text-gray-300">Slot (optional)</span>
-                <input type="number" min={1} value={newSlot} onChange={(event) => setNewSlot(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" placeholder="1" />
-              </label>
-            </div>
-
-            <label className="mt-5 block text-sm font-bold text-gray-300">Facebook / Messenger Name (optional)</label>
-            <input value={newFacebookName} onChange={(event) => setNewFacebookName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" placeholder="Messenger name" />
-
-            <div className="mt-5">
-              <CountryPicker
-                value={newCountryCode}
-                onChange={(code) => setNewCountryCode(code)}
-                disabled={savingNewSquad}
-                label="Country / Region (optional)"
-              />
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-gray-800 p-5">
-              <h3 className="text-xl font-black text-blue-300">Players</h3>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {newPlayerNames.map((name, index) => (
-                  <label key={index} className="block">
-                    <span className="text-sm font-bold text-gray-400">{index === 0 ? "Player 1 — Captain" : `Player ${index + 1}`}</span>
-                    <input
-                      value={name}
-                      onChange={(event) => setNewPlayerNames((current) => current.map((item, playerIndex) => playerIndex === index ? event.target.value : item))}
-                      className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3"
-                      placeholder={`Player ${index + 1} name`}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-blue-900 p-5">
-              <h3 className="text-xl font-black text-blue-300">Team Logo (optional)</h3>
-              {newLogoPreview ? (
-                <img src={newLogoPreview} alt="New squad logo preview" className="mt-4 h-36 w-36 rounded-2xl border border-blue-800 object-contain p-2" />
+            <div className="mt-3 space-y-2">
+              {visibleStandings.length === 0 ? (
+                <div className="border border-white/20 bg-black/20 p-8 text-center text-sm font-bold text-neutral-300">
+                  Waiting for standings...
+                </div>
               ) : (
-                <div className="mt-4 flex h-36 w-36 items-center justify-center rounded-2xl border border-dashed border-gray-700 text-gray-500">No Logo</div>
+                visibleStandings.map((standing, index) => (
+                  <StandingRow
+                    key={standing.squadId}
+                    standing={{
+                      ...standing,
+                      countryCode:
+                        squadCountries[standing.squadId]?.countryCode ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryCode ||
+                        "",
+                      countryName:
+                        squadCountries[standing.squadId]?.countryName ||
+                        squadCountries[
+                          `name:${normalizeSquadName(standing.squadName)}`
+                        ]?.countryName ||
+                        "",
+                    }}
+                    rank={index + 1}
+                  />
+                ))
               )}
-              <div className="mt-4 flex flex-wrap gap-3">
-                <label className="cursor-pointer rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase">
-                  Upload Logo
-                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleNewLogoChange} className="hidden" />
-                </label>
-                {newLogoPreview && (
-                  <button type="button" onClick={() => { setNewLogoFile(null); setNewLogoPreview(""); }} className="rounded-xl border border-red-700 px-5 py-3 text-sm font-black uppercase text-red-300">Remove Logo</button>
-                )}
-              </div>
             </div>
+          </section>
 
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <button type="button" onClick={() => void createAdminSquad()} disabled={savingNewSquad} className="flex-1 rounded-xl bg-green-700 px-6 py-4 font-black uppercase disabled:opacity-50">{savingNewSquad ? "Adding Squad..." : "Add & Approve Squad"}</button>
-              <button type="button" onClick={closeAddSquad} disabled={savingNewSquad} className="flex-1 rounded-xl border border-gray-700 px-6 py-4 font-black uppercase disabled:opacity-50">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editingSquad && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/90 p-4 sm:p-8">
-          <div className="mx-auto w-full max-w-2xl rounded-3xl border border-blue-800 bg-gray-950 p-6 text-white sm:p-8">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-widest text-blue-400">Admin Edit</p>
-                <h2 className="mt-2 text-3xl font-black">Edit Squad</h2>
-              </div>
-              <button type="button" onClick={closeEditSquad} className="rounded-lg border border-gray-700 px-4 py-2 font-black">Close</button>
-            </div>
-
-            <label className="mt-7 block text-sm font-bold text-gray-300">Squad Name</label>
-            <input value={editSquadName} onChange={(event) => setEditSquadName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" />
-
-            <label className="mt-5 block text-sm font-bold text-gray-300">Facebook / Messenger Name</label>
-            <input value={editFacebookName} onChange={(event) => setEditFacebookName(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3" />
-
-            <div className="mt-5">
-              <CountryPicker
-                value={editCountryCode}
-                onChange={(code) => setEditCountryCode(code)}
-                disabled={savingEdit}
-                label="Country / Region"
-              />
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-gray-800 p-5">
-              <h3 className="text-xl font-black text-blue-300">Players</h3>
-              <div className="mt-4 space-y-3">
-                {editPlayerNames.map((name, index) => (
-                  <div key={index}>
-                    <label className="text-sm font-bold text-gray-400">{index === 0 ? "Player 1 — Captain" : `Player ${index + 1}`}</label>
-                    <input
-                      value={name}
-                      onChange={(event) => setEditPlayerNames((current) => current.map((item, playerIndex) => playerIndex === index ? event.target.value : item))}
-                      className="mt-2 w-full rounded-xl border border-gray-700 bg-black px-4 py-3"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-blue-900 p-5">
-              <h3 className="text-xl font-black text-blue-300">Team Logo</h3>
-              {editLogoPreview && !removeCurrentLogo ? (
-                <img src={editLogoPreview} alt="Logo preview" className="mt-4 h-36 w-36 rounded-2xl border border-blue-800 object-contain p-2" />
-              ) : (
-                <div className="mt-4 flex h-36 w-36 items-center justify-center rounded-2xl border border-dashed border-gray-700 text-gray-500">No Logo</div>
-              )}
-              <div className="mt-4 flex flex-wrap gap-3">
-                <label className="cursor-pointer rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase">
-                  Replace Logo
-                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleEditLogoChange} className="hidden" />
-                </label>
-                <button type="button" onClick={() => { setRemoveCurrentLogo(true); setEditLogoFile(null); setEditLogoPreview(""); }} className="rounded-xl border border-red-700 px-5 py-3 text-sm font-black uppercase text-red-300">Remove Logo</button>
-              </div>
-            </div>
-
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <button type="button" onClick={() => void saveSquadEdits()} disabled={savingEdit} className="flex-1 rounded-xl bg-green-700 px-6 py-4 font-black uppercase disabled:opacity-50">{savingEdit ? "Saving..." : "Save Changes"}</button>
-              <button type="button" onClick={closeEditSquad} disabled={savingEdit} className="flex-1 rounded-xl border border-gray-700 px-6 py-4 font-black uppercase disabled:opacity-50">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedLogo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-6"
-          onClick={() => setSelectedLogo(null)}
-        >
-          <div className="w-full max-w-lg rounded-3xl border border-blue-800 bg-gray-950 p-6 text-center">
-            <h2 className="text-2xl font-black">
-              {selectedLogo.squadName}
-            </h2>
-            <img
-              src={selectedLogo.url}
-              alt=""
-              className="mt-6 max-h-[420px] w-full object-contain"
-            />
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function AdminButton({
-  href,
-  title,
-  description,
-  icon,
-  openInNewTab = false,
-}: {
-  href: string;
-  title: string;
-  description: string;
-  icon: string;
-  openInNewTab?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      target={openInNewTab ? "_blank" : undefined}
-      rel={openInNewTab ? "noopener noreferrer" : undefined}
-      className="rounded-2xl border border-blue-900 bg-blue-950/20 p-5 transition hover:border-blue-500 hover:bg-blue-950/40"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-3xl">{icon}</div>
-
-        {openInNewTab && (
-          <span className="rounded-full border border-blue-800 bg-blue-950/60 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-blue-300">
-            New Tab
-          </span>
-        )}
+        </aside>
       </div>
-
-      <h2 className="mt-3 text-xl font-black uppercase">
-        {title}
-      </h2>
-
-      <p className="mt-1 text-sm text-gray-400">
-        {description}
-      </p>
-    </Link>
+    </main>
   );
 }
 
-function StatCard({
+function normalizeSquadName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+
+function CountryFlagSvg({ code, label }: { code: string; label: string }) {
+  const c = code.trim().toUpperCase();
+
+  const common = {
+    width: 32,
+    height: 20,
+    viewBox: "0 0 32 20",
+    role: "img" as const,
+    "aria-label": label,
+    className: "h-5 w-8 rounded-sm shadow-sm",
+  };
+
+  if (c === "KI") {
+    return (
+      <svg {...common}>
+        <rect width="32" height="10" fill="#CE1126" />
+        <rect y="10" width="32" height="10" fill="#003F87" />
+        <path d="M0 11 C4 9 8 13 12 11 S20 9 24 11 S28 13 32 11 V13 C28 15 24 11 20 13 S12 15 8 13 S4 11 0 13Z" fill="#fff" />
+        <path d="M0 15 C4 13 8 17 12 15 S20 13 24 15 S28 17 32 15 V17 C28 19 24 15 20 17 S12 19 8 17 S4 15 0 17Z" fill="#fff" />
+        <circle cx="16" cy="7" r="3" fill="#FCD116" />
+        <path d="M16 1.8 L16.7 4.3 L19.2 3.6 L17.6 5.6 L20 6.5 L17.4 6.8 L18.6 9 L16.6 7.5 L16 10 L15.4 7.5 L13.4 9 L14.6 6.8 L12 6.5 L14.4 5.6 L12.8 3.6 L15.3 4.3Z" fill="#FCD116" />
+      </svg>
+    );
+  }
+
+  if (c === "TO") {
+    return (
+      <svg {...common}>
+        <rect width="32" height="20" fill="#C10000" />
+        <rect width="14" height="9" fill="#fff" />
+        <rect x="5.5" y="1" width="3" height="7" fill="#C10000" />
+        <rect x="3.5" y="3" width="7" height="3" fill="#C10000" />
+      </svg>
+    );
+  }
+
+  if (c === "SB") {
+    return (
+      <svg {...common}>
+        <polygon points="0,0 32,0 0,20" fill="#0051BA" />
+        <polygon points="32,0 32,20 0,20" fill="#215B33" />
+        <polygon points="0,17 28,0 32,0 0,20" fill="#FCD116" />
+        {[3,7,11,5,9].map((x, i) => (
+          <circle key={i} cx={x} cy={i < 3 ? 3 : 7} r="0.8" fill="#fff" />
+        ))}
+      </svg>
+    );
+  }
+
+  if (c === "US") {
+    return (
+      <svg {...common}>
+        {Array.from({ length: 13 }).map((_, i) => (
+          <rect key={i} y={(20 / 13) * i} width="32" height={20 / 13} fill={i % 2 === 0 ? "#B22234" : "#fff"} />
+        ))}
+        <rect width="13" height="10.8" fill="#3C3B6E" />
+        {Array.from({ length: 12 }).map((_, i) => (
+          <circle key={i} cx={1.5 + (i % 4) * 3} cy={1.5 + Math.floor(i / 4) * 3} r="0.45" fill="#fff" />
+        ))}
+      </svg>
+    );
+  }
+
+  // Generic inline-SVG fallback so TikTok still receives SVG markup, not an image.
+  return (
+    <svg {...common}>
+      <rect width="32" height="20" fill="#111827" />
+      <rect x="1" y="1" width="30" height="18" fill="none" stroke="#fff" strokeOpacity="0.5" />
+      <text x="16" y="13" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff">
+        {c}
+      </text>
+    </svg>
+  );
+}
+
+function InfoBox({
   label,
   value,
 }: {
   label: string;
-  value: number;
+  value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-blue-900 bg-black/90 p-4">
-      <p className="text-xs font-black uppercase tracking-widest text-gray-500">
+    <div className="border border-black/20 bg-white px-3 py-3">
+      <p className="truncate text-[8px] font-black uppercase tracking-wider text-neutral-600">
         {label}
       </p>
-      <p className="mt-2 text-3xl font-black text-blue-300">
+      <p className="mt-0.5 truncate text-[13px] font-black uppercase text-black">
         {value}
       </p>
     </div>
   );
 }
 
-function getCreatedTime(createdAt: Squad["createdAt"]) {
-  if (!createdAt) return 0;
-  if (createdAt instanceof Date) return createdAt.getTime();
+function StandingRow({
+  standing,
+  rank,
+}: {
+  standing: Standing;
+  rank: number;
+}) {
+  const rankStyle =
+    rank === 1
+      ? "bg-yellow-400 text-yellow-950 shadow-[0_0_18px_rgba(250,204,21,0.55)]"
+      : rank === 2
+        ? "bg-slate-200 text-black"
+        : rank === 3
+          ? " text-white"
+          : " text-white";
 
-  if (
-    typeof createdAt === "object" &&
-    "toDate" in createdAt &&
-    typeof createdAt.toDate === "function"
-  ) {
-    return createdAt.toDate().getTime();
-  }
+  return (
+    <div
+      className="grid grid-cols-[42px_88px_minmax(0,1fr)_54px_60px] items-center gap-2 border border-white/15 bg-black/20 px-3 py-3"
+    >
+      <div
+        className={`flex h-9 w-9 items-center justify-center text-sm font-black ${rankStyle}`}
+      >
+        {rank}
+      </div>
 
-  return 0;
+      <div className="flex h-10 w-[88px] items-center gap-2">
+        {standing.countryCode ? (
+          <div className="flex h-10 w-8 shrink-0 items-center justify-center">
+            <CountryFlagSvg
+              code={standing.countryCode}
+              label={standing.countryName || standing.countryCode}
+            />
+          </div>
+        ) : (
+          <div className="h-10 w-8 shrink-0" />
+        )}
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border border-white bg-white">
+          {standing.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={standing.logoUrl}
+              alt=""
+              className="h-full w-full object-contain p-1"
+            />
+          ) : (
+            <span className="text-[6px] font-black text-black">
+              LOGO
+            </span>
+          )}
+        </div>
+      </div>
+
+      <p className="truncate text-[14px] font-black uppercase">
+        {standing.squadName}
+      </p>
+
+      <p className="text-center text-base font-black text-white">
+        {standing.totalKills}
+      </p>
+
+      <p className="text-center text-lg font-black text-white">
+        {standing.totalPoints}
+      </p>
+    </div>
+  );
 }
