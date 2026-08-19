@@ -60,8 +60,29 @@ export default function ArchivePage() {
 
   const isAdmin =
     user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-  const newestArchive = useMemo(() => archives[0] ?? null, [archives]);
-  const previousArchives = useMemo(() => archives.slice(1), [archives]);
+  const newestArchive = useMemo(() => {
+    const now = new Date();
+
+    return (
+      archives.find((archive) => {
+        if (!archive.archivedAt) return false;
+
+        return (
+          archive.archivedAt.getFullYear() === now.getFullYear() &&
+          archive.archivedAt.getMonth() === now.getMonth() &&
+          archive.archivedAt.getDate() === now.getDate()
+        );
+      }) ?? null
+    );
+  }, [archives]);
+
+  const previousArchives = useMemo(
+    () =>
+      newestArchive
+        ? archives.filter((archive) => archive.id !== newestArchive.id)
+        : archives,
+    [archives, newestArchive],
+  );
 
 
   useEffect(
