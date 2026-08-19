@@ -3,6 +3,9 @@
 import {
   collection,
   getDocs,
+  limit,
+  orderBy,
+  query,
 } from "firebase/firestore";
 import { useCallback, useEffect, useState } from "react";
 import { db } from "@/firebase";
@@ -57,15 +60,39 @@ function addChickenDinner(
   row.winningKills += Number(data.totalKills) || 0;
 }
 
-async function loadCurrentChickenDinners() {
+async function loadNewestArchivedChickenDinners() {
   const totals: Record<string, ChickenDinnerRow> = {};
 
-  // CURRENT / HISTORY MATCHES
-  const currentMatches = await getDocs(collection(db, "matches"));
+  const newestArchiveSnapshot = await getDocs(
+    query(
+      collection(db, "tournamentArchives"),
+      orderBy("archivedAt", "desc"),
+      limit(1),
+    ),
+  );
 
-  for (const matchDocument of currentMatches.docs) {
+  const newestArchiveDocument = newestArchiveSnapshot.docs[0];
+  if (!newestArchiveDocument) return [];
+
+  const archivedMatches = await getDocs(
+    collection(
+      db,
+      "tournamentArchives",
+      newestArchiveDocument.id,
+      "matches",
+    ),
+  );
+
+  for (const matchDocument of archivedMatches.docs) {
     const results = await getDocs(
-      collection(db, "matches", matchDocument.id, "results"),
+      collection(
+        db,
+        "tournamentArchives",
+        newestArchiveDocument.id,
+        "matches",
+        matchDocument.id,
+        "results",
+      ),
     );
 
     results.docs.forEach((resultDocument) => {
@@ -101,11 +128,11 @@ export default function TopChickenDinnersOverlayPage() {
   const refresh = useCallback(async () => {
     try {
       setErrorMessage("");
-      const loadedRows = await loadCurrentChickenDinners();
+      const loadedRows = await loadNewestArchivedChickenDinners();
       setRows(loadedRows);
     } catch (error) {
-      console.error("Unable to load current Chicken Dinner stats:", error);
-      setErrorMessage("Unable to load current Chicken Dinner stats.");
+      console.error("Unable to load New Update Chicken Dinner stats:", error);
+      setErrorMessage("Unable to load New Update Chicken Dinner stats.");
     } finally {
       setLoading(false);
     }
@@ -143,7 +170,7 @@ export default function TopChickenDinnersOverlayPage() {
           </div>
         ) : rows.length === 0 ? (
           <div className="px-5 py-8 text-center text-sm font-bold text-white/65">
-            No No Chicken Dinners recorded in the new update yet.
+            No Chicken Dinners recorded in the New Update.
           </div>
         ) : (
           rows.map((row, index) => (
