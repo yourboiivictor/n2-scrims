@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { useCallback, useEffect, useState } from "react";
 import { db } from "@/firebase";
 
@@ -19,18 +19,49 @@ type ArchivedScrimPerformance = {
   totalPoints: number;
 };
 
-async function loadCurrentScrimPointLeaders() {
-  const standings = await getDocs(collection(db, "standings"));
+async function loadNewestArchivedScrimPointLeaders() {
+  const newestArchiveSnapshot = await getDocs(
+    query(
+      collection(db, "tournamentArchives"),
+      orderBy("archivedAt", "desc"),
+      limit(1),
+    ),
+  );
+
+  const newestArchiveDocument = newestArchiveSnapshot.docs[0];
+  if (!newestArchiveDocument) return [];
+
+  const archiveData = newestArchiveDocument.data();
+
+  const tournamentName =
+    typeof archiveData.tournamentName === "string" &&
+    archiveData.tournamentName.trim()
+      ? archiveData.tournamentName.trim()
+      : "New Update";
+
+  const season =
+    typeof archiveData.season === "string"
+      ? archiveData.season
+      : "";
+
+  const standings = await getDocs(
+    collection(
+      db,
+      "tournamentArchives",
+      newestArchiveDocument.id,
+      "standings",
+    ),
+  );
 
   return standings.docs
     .map((standingDocument) => {
       const data = standingDocument.data();
 
       return {
-        id: standingDocument.id,
-        archiveId: "",
-        tournamentName: "Current Scrim",
-        season: "",
+        id: `${newestArchiveDocument.id}-${standingDocument.id}`,
+        archiveId: newestArchiveDocument.id,
+        tournamentName,
+        season,
         squadId: standingDocument.id,
         squadName:
           typeof data.squadName === "string" && data.squadName.trim()
@@ -69,9 +100,9 @@ export default function MostPointsOverlay() {
 
   const refresh = useCallback(async () => {
     try {
-      setLeaders(await loadCurrentScrimPointLeaders());
+      setLeaders(await loadNewestArchivedScrimPointLeaders());
     } catch (error) {
-      console.error("Unable to load current scrim point leaders:", error);
+      console.error("Unable to load newest archived scrim point leaders:", error);
     } finally {
       setLoading(false);
     }
@@ -100,17 +131,17 @@ export default function MostPointsOverlay() {
           </h1>
 
           <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-black/50">
-            Current New Update totals
+            Newest archived New Update
           </p>
         </div>
 
         {loading ? (
           <div className="px-6 py-10 text-center text-sm font-bold text-white/60">
-            Loading current scrim...
+            Loading New Update...
           </div>
         ) : leaders.length === 0 ? (
           <div className="px-6 py-10 text-center text-sm font-bold text-white/60">
-            No New Update standings yet.
+            No standings found in the New Update.
           </div>
         ) : (
           leaders.map((team, index) => (
