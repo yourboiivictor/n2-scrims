@@ -63,7 +63,7 @@ function addPlayersFromResult(
   });
 }
 
-async function loadAllPlayerKills() {
+async function loadCurrentPlayerKills() {
   const totals: Record<string, PlayerKillLeader> = {};
 
   // Current + history matches.
@@ -82,42 +82,6 @@ async function loadAllPlayerKills() {
     });
   }
 
-  // Archived tournaments.
-  const archives = await getDocs(
-    collection(db, "tournamentArchives"),
-  );
-
-  for (const archiveDocument of archives.docs) {
-    const archivedMatches = await getDocs(
-      collection(
-        db,
-        "tournamentArchives",
-        archiveDocument.id,
-        "matches",
-      ),
-    );
-
-    for (const matchDocument of archivedMatches.docs) {
-      const results = await getDocs(
-        collection(
-          db,
-          "tournamentArchives",
-          archiveDocument.id,
-          "matches",
-          matchDocument.id,
-          "results",
-        ),
-      );
-
-      results.docs.forEach((resultDocument) => {
-        addPlayersFromResult(
-          totals,
-          resultDocument.data() as Record<string, unknown>,
-        );
-      });
-    }
-  }
-
   return Object.values(totals).sort((a, b) => {
     if (b.totalKills !== a.totalKills) {
       return b.totalKills - a.totalKills;
@@ -132,7 +96,7 @@ export default function KillLeaderOverlay() {
 
   const refresh = useCallback(async () => {
     try {
-      const players = await loadAllPlayerKills();
+      const players = await loadCurrentPlayerKills();
       setLeaders(players.slice(0, 10));
     } catch (error) {
       console.error("Unable to load player kill leaders:", error);
